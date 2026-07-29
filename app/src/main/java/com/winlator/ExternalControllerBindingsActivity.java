@@ -29,12 +29,19 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.winlator.core.AppUtils;
 import com.winlator.core.LocaleHelper;
 import com.winlator.inputcontrols.Binding;
+import com.winlator.inputcontrols.ControlElement;
 import com.winlator.inputcontrols.ControlsProfile;
 import com.winlator.inputcontrols.ExternalController;
 import com.winlator.inputcontrols.ExternalControllerBinding;
 import com.winlator.inputcontrols.GamepadState;
 import com.winlator.inputcontrols.InputControlsManager;
 import com.winlator.math.Mathf;
+import com.winlator.widget.InputControlsView;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 public class ExternalControllerBindingsActivity extends AppCompatActivity {
     private TextView emptyTextView;
@@ -42,6 +49,9 @@ public class ExternalControllerBindingsActivity extends AppCompatActivity {
     private ExternalController controller;
     private RecyclerView recyclerView;
     private ControllerBindingsAdapter adapter;
+    private boolean teknoParrotNativeControls;
+    private final ArrayList<Binding> arcadeActionBindings = new ArrayList<>();
+    private final ArrayList<String> arcadeActionLabels = new ArrayList<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -53,15 +63,21 @@ public class ExternalControllerBindingsActivity extends AppCompatActivity {
         int profileId = intent.getIntExtra("profile_id", 0);
         profile = InputControlsManager.loadProfile(this, ControlsProfile.getProfileFile(this, profileId));
         String controllerId = intent.getStringExtra("controller_id");
+        teknoParrotNativeControls =
+                intent.getBooleanExtra("teknoparrot_native_controls", false);
 
         controller = profile.getController(controllerId);
         if (controller == null) {
             controller = profile.addController(controllerId);
             profile.save();
         }
+        if (teknoParrotNativeControls)
+            loadTeknoParrotActions();
 
         Toolbar toolbar = findViewById(R.id.Toolbar);
         toolbar.setTitle(controller.getName());
+        if (teknoParrotNativeControls)
+            toolbar.setSubtitle(profile.getName());
         setSupportActionBar(toolbar);
 
         ActionBar actionBar = getSupportActionBar();
@@ -102,6 +118,129 @@ public class ExternalControllerBindingsActivity extends AppCompatActivity {
         }
         else animateItemView(position = controller.getPosition(controllerBinding));
         recyclerView.scrollToPosition(position);
+    }
+
+    /**
+     * Builds the editable cabinet-action list from the selected TeknoParrot
+     * overlay.  The overlay profile is already title-specific and contains the
+     * same semantic targets used by the forwarded-input bridge (for example
+     * ATTACK -> GAMEPAD_BUTTON_A, COIN -> GAMEPAD_BUTTON_SELECT).  Presenting
+     * these labels keeps controller setup game-specific without exposing Wine
+     * keyboard keys to players.
+     */
+    private void loadTeknoParrotActions() {
+        // Keep the editable profile metadata-only. Loading elements into that
+        // instance would make ControlsProfile.save() rewrite their normalized
+        // positions using this non-displayed helper view.
+        ControlsProfile actionProfile = InputControlsManager.loadProfile(
+                this,
+                ControlsProfile.getProfileFile(this, profile.id));
+
+        LinkedHashMap<Binding, String> actions = new LinkedHashMap<>();
+        actions.put(Binding.NONE, "Not assigned");
+        HashSet<String> usedLabels = new HashSet<>();
+        usedLabels.add("Not assigned");
+
+        if (actionProfile != null)
+            actionProfile.loadElements(new InputControlsView(this));
+        for (ControlElement element : actionProfile != null
+                ? actionProfile.getElements()
+                : new ArrayList<ControlElement>()) {
+            String baseLabel = element.getText() != null
+                    ? element.getText().trim()
+                    : "";
+            boolean directional =
+                    element.getType() == ControlElement.Type.D_PAD ||
+                    element.getType() == ControlElement.Type.STICK ||
+                    element.getType() == ControlElement.Type.TRACKPAD;
+            String[] directions = {"Up", "Right", "Down", "Left"};
+
+            for (int index = 0; index < element.getBindingCount(); index++) {
+                Binding binding = element.getBindingAt(index);
+                if (!isForwardedArcadeBinding(binding) ||
+                        actions.containsKey(binding))
+                    continue;
+
+                String label = baseLabel.isEmpty()
+                        ? binding.toString()
+                        : directional && index < directions.length
+                            ? baseLabel + " " + directions[index]
+                            : baseLabel;
+                if (!usedLabels.add(label))
+                    label = label + " (" + binding.toString() + ")";
+                actions.put(binding, label);
+            }
+        }
+
+        // Corrupt or user-created overlays may not contain semantic actions.
+        // Keep the editor usable with the bridge's safe standard arcade set.
+        if (actions.size() == 1) {
+            addFallbackAction(actions, Binding.GAMEPAD_DPAD_UP, "Move Up");
+            addFallbackAction(actions, Binding.GAMEPAD_DPAD_RIGHT, "Move Right");
+            addFallbackAction(actions, Binding.GAMEPAD_DPAD_DOWN, "Move Down");
+            addFallbackAction(actions, Binding.GAMEPAD_DPAD_LEFT, "Move Left");
+            addFallbackAction(actions, Binding.GAMEPAD_BUTTON_A, "Button 1");
+            addFallbackAction(actions, Binding.GAMEPAD_BUTTON_B, "Button 2");
+            addFallbackAction(actions, Binding.GAMEPAD_BUTTON_X, "Button 3");
+            addFallbackAction(actions, Binding.GAMEPAD_BUTTON_Y, "Button 4");
+            addFallbackAction(actions, Binding.GAMEPAD_BUTTON_L1, "Button 5");
+            addFallbackAction(actions, Binding.GAMEPAD_BUTTON_R1, "Button 6");
+            addFallbackAction(actions, Binding.GAMEPAD_BUTTON_START, "Start");
+            addFallbackAction(actions, Binding.GAMEPAD_BUTTON_SELECT, "Coin");
+            addFallbackAction(actions, Binding.KEY_F2, "Service");
+            addFallbackAction(actions, Binding.KEY_F1, "Test");
+        }
+
+        for (Map.Entry<Binding, String> action : actions.entrySet()) {
+            arcadeActionBindings.add(action.getKey());
+            arcadeActionLabels.add(action.getValue());
+        }
+    }
+
+    private static void addFallbackAction(
+            LinkedHashMap<Binding, String> actions,
+            Binding binding,
+            String label) {
+        actions.put(binding, label);
+    }
+
+    private static boolean isForwardedArcadeBinding(Binding binding) {
+        switch (binding) {
+            case KEY_UP:
+            case KEY_DOWN:
+            case KEY_LEFT:
+            case KEY_RIGHT:
+            case KEY_ENTER:
+            case KEY_1:
+            case KEY_5:
+            case KEY_F1:
+            case KEY_F2:
+            case GAMEPAD_DPAD_UP:
+            case GAMEPAD_DPAD_DOWN:
+            case GAMEPAD_DPAD_LEFT:
+            case GAMEPAD_DPAD_RIGHT:
+            case GAMEPAD_BUTTON_A:
+            case GAMEPAD_BUTTON_B:
+            case GAMEPAD_BUTTON_X:
+            case GAMEPAD_BUTTON_Y:
+            case GAMEPAD_BUTTON_L1:
+            case GAMEPAD_BUTTON_R1:
+            case GAMEPAD_BUTTON_L2:
+            case GAMEPAD_BUTTON_R2:
+            case GAMEPAD_BUTTON_START:
+            case GAMEPAD_BUTTON_SELECT:
+            case GAMEPAD_LEFT_THUMB_UP:
+            case GAMEPAD_LEFT_THUMB_RIGHT:
+            case GAMEPAD_LEFT_THUMB_DOWN:
+            case GAMEPAD_LEFT_THUMB_LEFT:
+            case GAMEPAD_RIGHT_THUMB_UP:
+            case GAMEPAD_RIGHT_THUMB_RIGHT:
+            case GAMEPAD_RIGHT_THUMB_DOWN:
+            case GAMEPAD_RIGHT_THUMB_LEFT:
+                return true;
+            default:
+                return false;
+        }
     }
 
     private void processJoystickInput() {
@@ -202,6 +341,11 @@ public class ExternalControllerBindingsActivity extends AppCompatActivity {
         }
 
         private void loadBindingSpinner(ViewHolder holder, final ExternalControllerBinding item) {
+            if (teknoParrotNativeControls) {
+                loadTeknoParrotBindingSpinner(holder, item);
+                return;
+            }
+
             final Context $this = ExternalControllerBindingsActivity.this;
 
             Runnable update = () -> {
@@ -270,6 +414,43 @@ public class ExternalControllerBindingsActivity extends AppCompatActivity {
             });
 
             update.run();
+        }
+
+        private void loadTeknoParrotBindingSpinner(
+                ViewHolder holder,
+                final ExternalControllerBinding item) {
+            holder.bindingType.setAdapter(new ArrayAdapter<>(
+                    ExternalControllerBindingsActivity.this,
+                    android.R.layout.simple_spinner_dropdown_item,
+                    new String[]{"Arcade action"}));
+            holder.bindingType.setSelection(0, false);
+            holder.bindingType.setEnabled(false);
+
+            holder.binding.setAdapter(new ArrayAdapter<>(
+                    ExternalControllerBindingsActivity.this,
+                    android.R.layout.simple_spinner_dropdown_item,
+                    arcadeActionLabels));
+            int selected = arcadeActionBindings.indexOf(item.getBinding());
+            holder.binding.setSelection(selected >= 0 ? selected : 0, false);
+            holder.binding.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+                @Override
+                public void onItemSelected(
+                        AdapterView<?> parent,
+                        View view,
+                        int position,
+                        long id) {
+                    if (position < 0 || position >= arcadeActionBindings.size())
+                        return;
+                    Binding binding = arcadeActionBindings.get(position);
+                    if (binding != item.getBinding()) {
+                        item.setBinding(binding);
+                        profile.save();
+                    }
+                }
+
+                @Override
+                public void onNothingSelected(AdapterView<?> parent) {}
+            });
         }
     }
 

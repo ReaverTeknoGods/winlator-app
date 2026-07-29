@@ -21,17 +21,17 @@
         <item name="radioButtonStyle">@style/RadioButton</item>
     </style>
     <style name="AppThemeLight" parent="@style/AppThemeBase">
-        <item name="colorAccent">#0288d1</item>
-        <item name="colorPrimary">#607d8b</item>
-        <item name="colorPrimaryDark">#455a64</item>
-        <item name="colorControlNormal">#e0e0e0</item>
-        <item name="colorPrimaryText">#424242</item>
-        <item name="colorSecondaryText">#757575</item>
-        <item name="colorPrimarySurface">#fafafa</item>
+        <item name="colorAccent">#6C5CE7</item>
+        <item name="colorPrimary">#6C5CE7</item>
+        <item name="colorPrimaryDark">#4E3FBF</item>
+        <item name="colorControlNormal">#D8D8E0</item>
+        <item name="colorPrimaryText">#1B1B1F</item>
+        <item name="colorSecondaryText">#5C5C66</item>
+        <item name="colorPrimarySurface">#F6F6F8</item>
         <item name="colorSecondarySurface">#ffffff</item>
-        <item name="colorPrimaryVariant">#607d8b</item>
-        <item name="colorSecondaryVariant">#d3dce0</item>
-        <item name="colorError">#ef5350</item>
+        <item name="colorPrimaryVariant">#5646D6</item>
+        <item name="colorSecondaryVariant">#EDEAFD</item>
+        <item name="colorError">#C5221F</item>
         <item name="popupMenuBackground">@drawable/content_dialog_background_light</item>
         <item name="toolboxBackground">@drawable/toolbox_light</item>
         <item name="panelBackground">@drawable/panel_background_light</item>
@@ -39,17 +39,17 @@
         <item name="progressBarIndeterminateImage">@drawable/progress_bar_indeterminate_light</item>
     </style>
     <style name="AppThemeDark" parent="@style/AppThemeBase">
-        <item name="colorAccent">#0288d1</item>
-        <item name="colorPrimary">#505963</item>
-        <item name="colorPrimaryDark">#3f474f</item>
-        <item name="colorControlNormal">#616161</item>
-        <item name="colorPrimaryText">#fafafa</item>
-        <item name="colorSecondaryText">#9e9e9e</item>
-        <item name="colorPrimarySurface">#1b1e21</item>
-        <item name="colorSecondarySurface">#2d3238</item>
-        <item name="colorPrimaryVariant">#56677a</item>
-        <item name="colorSecondaryVariant">#37424f</item>
-        <item name="colorError">#ef5350</item>
+        <item name="colorAccent">#8B7CFF</item>
+        <item name="colorPrimary">#2B2749</item>
+        <item name="colorPrimaryDark">#151519</item>
+        <item name="colorControlNormal">#34343E</item>
+        <item name="colorPrimaryText">#EDEDF2</item>
+        <item name="colorSecondaryText">#A6A6B2</item>
+        <item name="colorPrimarySurface">#151519</item>
+        <item name="colorSecondarySurface">#1E1E24</item>
+        <item name="colorPrimaryVariant">#A99DFF</item>
+        <item name="colorSecondaryVariant">#2B2749</item>
+        <item name="colorError">#FF8A80</item>
         <item name="popupMenuBackground">@drawable/content_dialog_background_dark</item>
         <item name="toolboxBackground">@drawable/toolbox_dark</item>
         <item name="panelBackground">@drawable/panel_background_dark</item>
@@ -65,6 +65,13 @@
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowTranslucentStatus">true</item>
         <item name="android:windowTranslucentNavigation">true</item>
+    </style>
+    <style name="TeknoParrotProvisioningTheme" parent="@style/AppThemeDark">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowDisablePreview">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
     </style>
     <style name="ComboBox">
         <item name="android:layout_width">192dp</item>

@@ -1,6 +1,7 @@
 package com.winlator.inputcontrols;
 
 import android.content.Context;
+import android.util.Log;
 
 import androidx.annotation.NonNull;
 
@@ -18,6 +19,7 @@ import java.util.List;
 import java.util.Locale;
 
 public class ControlsProfile implements Comparable<ControlsProfile>, GamepadSlot {
+    private static final String TAG = "ControlsProfile";
     public final int id;
     private String name;
     private float cursorSpeed = 1.0f;
@@ -127,13 +129,17 @@ public class ControlsProfile implements Comparable<ControlsProfile>, GamepadSlot
         return elementsLoaded;
     }
 
-    public void save() {
+    public boolean save() {
         File file = getProfileFile(context, id);
+        if (name == null || name.trim().isEmpty()) {
+            Log.e(TAG, "Refusing to save an unnamed control profile " + id + ".");
+            return false;
+        }
 
         try {
             JSONObject data = new JSONObject();
             data.put("id", id);
-            data.put("name", name);
+            data.put("name", name.trim());
             data.put("cursorSpeed", Float.valueOf(cursorSpeed));
             if (disableMouseInput) data.put("disableMouseInput", disableMouseInput);
 
@@ -158,9 +164,16 @@ public class ControlsProfile implements Comparable<ControlsProfile>, GamepadSlot
             }
             if (controllersJSONArray.length() > 0) data.put("controllers", controllersJSONArray);
 
-            FileUtils.writeString(file, data.toString());
+            if (!FileUtils.writeStringAtomic(file, data.toString())) {
+                Log.e(TAG, "Could not save control profile " + id + ".");
+                return false;
+            }
+            return true;
         }
-        catch (JSONException e) {}
+        catch (JSONException | RuntimeException error) {
+            Log.e(TAG, "Could not serialize control profile " + id + ".", error);
+            return false;
+        }
     }
 
     public static File getProfileFile(Context context, int id) {
@@ -182,7 +195,7 @@ public class ControlsProfile implements Comparable<ControlsProfile>, GamepadSlot
     }
 
     public boolean isTemplate() {
-        return name.toLowerCase(Locale.ENGLISH).contains("template");
+        return name != null && name.toLowerCase(Locale.ENGLISH).contains("template");
     }
 
     public ArrayList<ExternalController> loadControllers() {

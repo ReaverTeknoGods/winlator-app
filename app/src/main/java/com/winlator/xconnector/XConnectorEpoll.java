@@ -90,7 +90,12 @@ public class XConnectorEpoll {
 
     @Keep
     private void killAllConnections() {
-        while (!connectedClients.isEmpty()) killConnection(connectedClients.remove(0));
+        final ArrayList<ConnectedClient> clients;
+        synchronized (connectedClients) {
+            clients = new ArrayList<>(connectedClients);
+            connectedClients.clear();
+        }
+        for (ConnectedClient client : clients) killConnection(client);
     }
 
     public List<ConnectedClient> getClients() {

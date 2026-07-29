@@ -12,6 +12,7 @@
 #include <jni.h>
 #include <android/log.h>
 #include <pthread.h>
+#include <stdatomic.h>
 
 #include "winlator.h"
 #include "jni_utils.h"
@@ -35,6 +36,9 @@ typedef struct XConnectorEpoll {
     int serverFd;
     int shutdownFd;
     bool multithreadedClients;
+    pthread_mutex_t clientsMutex;
+    pthread_cond_t clientsCondition;
+    size_t activeClientThreads;
     JMethods jmethods;
 } XConnectorEpoll;
 
@@ -42,7 +46,8 @@ typedef struct ConnectedClient {
     pthread_t pollThread;
     int fd;
     int shutdownFd;
-    bool running;
+    atomic_bool running;
+    XConnectorEpoll* connector;
     void* tag;
     JMethods jmethods;
 } ConnectedClient;
@@ -130,11 +135,24 @@ static void XConnectorEpoll_destroy(JNIEnv* env, XConnectorEpoll* connector) {
     }
 
     CLOSEFD(connector->epollFd);
+    pthread_cond_destroy(&connector->clientsCondition);
+    pthread_mutex_destroy(&connector->clientsMutex);
     free(connector);
 }
 
 static XConnectorEpoll* XConnectorEpoll_allocate(JNIEnv* env, jobject obj, const char* sockPath) {
     XConnectorEpoll* connector = calloc(1, sizeof(XConnectorEpoll));
+    if (!connector) return NULL;
+
+    if (pthread_mutex_init(&connector->clientsMutex, NULL) != 0) {
+        free(connector);
+        return NULL;
+    }
+    if (pthread_cond_init(&connector->clientsCondition, NULL) != 0) {
+        pthread_mutex_destroy(&connector->clientsMutex);
+        free(connector);
+        return NULL;
+    }
 
     connector->epollFd = epoll_create(MAX_EVENTS);
     if (connector->epollFd < 0) goto error;
@@ -157,21 +175,42 @@ error:
     return NULL;
 }
 
+static void XConnectorEpoll_clientThreadStarted(XConnectorEpoll* connector) {
+    pthread_mutex_lock(&connector->clientsMutex);
+    connector->activeClientThreads++;
+    pthread_mutex_unlock(&connector->clientsMutex);
+}
+
+static void XConnectorEpoll_clientThreadStopped(XConnectorEpoll* connector) {
+    pthread_mutex_lock(&connector->clientsMutex);
+    connector->activeClientThreads--;
+    if (connector->activeClientThreads == 0)
+        pthread_cond_broadcast(&connector->clientsCondition);
+    pthread_mutex_unlock(&connector->clientsMutex);
+}
+
+static void XConnectorEpoll_waitForClientThreads(XConnectorEpoll* connector) {
+    pthread_mutex_lock(&connector->clientsMutex);
+    while (connector->activeClientThreads != 0)
+        pthread_cond_wait(&connector->clientsCondition, &connector->clientsMutex);
+    pthread_mutex_unlock(&connector->clientsMutex);
+}
+
 static void XConnectorEpoll_killConnection(XConnectorEpoll* connector, ConnectedClient* client) {
     JMethods* jmethods = &connector->jmethods;
-    client->running = false;
 
     if (connector->multithreadedClients) {
-        if (pthread_self() != client->pollThread) {
+        if (atomic_exchange(&client->running, false))
             requestShutdown(client->shutdownFd);
-            pthread_join(client->pollThread, NULL);
-            client->pollThread = 0;
-        }
-        else jmethods = &client->jmethods;
-
-        CLOSEFD(client->shutdownFd);
+        // Client threads are detached and own their descriptors, callback, and
+        // native ConnectedClient allocation. This method only requests exit;
+        // XConnectorEpoll_stopEpollThread waits for every detached client before
+        // the connector's JNI global reference is released.
+        return;
     }
-    else removeFdFromEpoll(connector->epollFd, client->fd);
+
+    atomic_store(&client->running, false);
+    removeFdFromEpoll(connector->epollFd, client->fd);
 
     CLOSEFD(client->fd);
 
@@ -179,10 +218,12 @@ static void XConnectorEpoll_killConnection(XConnectorEpoll* connector, Connected
         (*jmethods->env)->CallVoidMethod(jmethods->env, jmethods->obj, jmethods->handleConnectionShutdown, client->tag);
         client->tag = NULL;
     }
+    free(client);
 }
 
 static void* pollThread(void* param) {
     ConnectedClient* client = param;
+    XConnectorEpoll* connector = client->connector;
     loadJMethods(&client->jmethods);
     JMethods* jmethods = &client->jmethods;
     client->tag = (*jmethods->env)->CallObjectMethod(jmethods->env, jmethods->obj, jmethods->handleNewConnection, (jlong)client, client->fd);
@@ -192,30 +233,61 @@ static void* pollThread(void* param) {
         res = waitForSocketRead(client->fd, client->shutdownFd);
         if (res == 1) (*jmethods->env)->CallVoidMethod(jmethods->env, jmethods->obj, jmethods->handleExistingConnection, client->tag);
     }
-    while (client->running && res >= 0);
+    while (atomic_load(&client->running) && res >= 0);
 
     if (client->tag) {
         (*jmethods->env)->CallVoidMethod(jmethods->env, jmethods->obj, jmethods->handleConnectionShutdown, client->tag);
         client->tag = NULL;
     }
+    CLOSEFD(client->shutdownFd);
+    CLOSEFD(client->fd);
     (*jmethods->jvm)->DetachCurrentThread(jmethods->jvm);
+    free(client);
+    XConnectorEpoll_clientThreadStopped(connector);
     return NULL;
 }
 
 static void XConnectorEpoll_handleNewConnection(XConnectorEpoll* connector, int clientFd) {
     JMethods* jmethods = &connector->jmethods;
     ConnectedClient* client = calloc(1, sizeof(ConnectedClient));
+    if (!client) {
+        CLOSEFD(clientFd);
+        return;
+    }
+
     client->fd = clientFd;
-    client->running = true;
+    client->connector = connector;
+    atomic_init(&client->running, true);
 
     if (connector->multithreadedClients) {
         client->jmethods.jvm = connector->jmethods.jvm;
         client->jmethods.obj = connector->jmethods.obj;
         client->shutdownFd = eventfd(0, EFD_NONBLOCK);
-        pthread_create(&client->pollThread, NULL, pollThread, client);
+        if (client->shutdownFd < 0) {
+            CLOSEFD(client->fd);
+            free(client);
+            return;
+        }
+
+        pthread_attr_t attr;
+        pthread_attr_init(&attr);
+        pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+        XConnectorEpoll_clientThreadStarted(connector);
+        int createResult = pthread_create(&client->pollThread, &attr, pollThread, client);
+        pthread_attr_destroy(&attr);
+        if (createResult != 0) {
+            XConnectorEpoll_clientThreadStopped(connector);
+            CLOSEFD(client->shutdownFd);
+            CLOSEFD(client->fd);
+            free(client);
+        }
     }
     else {
-        addFdToEpoll(connector->epollFd, clientFd, client);
+        if (!addFdToEpoll(connector->epollFd, clientFd, client)) {
+            CLOSEFD(client->fd);
+            free(client);
+            return;
+        }
         client->tag = (*jmethods->env)->CallObjectMethod(jmethods->env, jmethods->obj, jmethods->handleNewConnection, (jlong)client, clientFd);
     }
 }
@@ -261,6 +333,7 @@ static void XConnectorEpoll_stopEpollThread(XConnectorEpoll* connector) {
 
     pthread_join(connector->epollThread, NULL);
     connector->epollThread = 0;
+    XConnectorEpoll_waitForClientThreads(connector);
 }
 
 JNIEXPORT void JNICALL

@@ -54,9 +54,16 @@ public class InputControlsFragment extends Fragment {
     private Runnable updateLayout;
     private Callback<ControlsProfile> importProfileCallback;
     private final int selectedProfileId;
+    private final boolean teknoParrotNativeControls;
+    private final String teknoParrotProfileName;
 
-    public InputControlsFragment(int selectedProfileId) {
+    public InputControlsFragment(
+            int selectedProfileId,
+            boolean teknoParrotNativeControls,
+            String teknoParrotProfileName) {
         this.selectedProfileId = selectedProfileId;
+        this.teknoParrotNativeControls = teknoParrotNativeControls;
+        this.teknoParrotProfileName = teknoParrotProfileName;
     }
 
     @Override
@@ -77,7 +84,12 @@ public class InputControlsFragment extends Fragment {
         if (requestCode == MainActivity.OPEN_FILE_REQUEST_CODE && resultCode == Activity.RESULT_OK) {
             try {
                 ControlsProfile importedProfile = manager.importProfile(new JSONObject(FileUtils.readString(getContext(), data.getData())));
-                if (importProfileCallback != null) importProfileCallback.call(importedProfile);
+                if (importedProfile == null) {
+                    AppUtils.showToast(getContext(), R.string.unable_to_import_profile);
+                }
+                else if (importProfileCallback != null) {
+                    importProfileCallback.call(importedProfile);
+                }
             }
             catch (Exception e) {
                 AppUtils.showToast(getContext(), R.string.unable_to_import_profile);
@@ -101,14 +113,17 @@ public class InputControlsFragment extends Fragment {
         final SeekBar sbCursorSpeed = view.findViewById(R.id.SBCursorSpeed);
         sbCursorSpeed.setOnValueChangeListener((seekBar, value) -> {
             if (currentProfile != null) {
-                currentProfile.setCursorSpeed(value / 100.0f);
-                currentProfile.save();
+                float cursorSpeed = value / 100.0f;
+                if (Float.compare(currentProfile.getCursorSpeed(), cursorSpeed) != 0) {
+                    currentProfile.setCursorSpeed(cursorSpeed);
+                    currentProfile.save();
+                }
             }
         });
 
         CheckBox cbDisableMouseInput = view.findViewById(R.id.CBDisableMouseInput);
         cbDisableMouseInput.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            if (currentProfile != null) {
+            if (currentProfile != null && currentProfile.isDisableMouseInput() != isChecked) {
                 currentProfile.setDisableMouseInput(isChecked);
                 currentProfile.save();
             }
@@ -129,21 +144,40 @@ public class InputControlsFragment extends Fragment {
         updateLayout.run();
 
         SeekBar sbOverlayOpacity = view.findViewById(R.id.SBOverlayOpacity);
-        sbOverlayOpacity.setOnValueChangeListener((seekBar, value) -> preferences.edit().putFloat("overlay_opacity", value / 100.0f).apply());
+        sbOverlayOpacity.setOnValueChangeListener((seekBar, value) -> {
+            float opacity = value / 100.0f;
+            if (Float.compare(
+                    preferences.getFloat("overlay_opacity", InputControlsView.DEFAULT_OVERLAY_OPACITY),
+                    opacity) != 0)
+                preferences.edit().putFloat("overlay_opacity", opacity).apply();
+        });
         sbOverlayOpacity.setValue(preferences.getFloat("overlay_opacity", InputControlsView.DEFAULT_OVERLAY_OPACITY) * 100);
 
         view.findViewById(R.id.BTAddProfile).setOnClickListener((v) -> ContentDialog.prompt(context, R.string.profile_name, null, (name) -> {
-            currentProfile = manager.createProfile(name);
-            loadProfileSpinner(sProfile);
-            updateLayout.run();
+            ControlsProfile createdProfile = manager.createProfile(name);
+            if (createdProfile == null) {
+                AppUtils.showToast(context, R.string.unable_to_save_profile);
+            }
+            else {
+                currentProfile = createdProfile;
+                loadProfileSpinner(sProfile);
+                updateLayout.run();
+            }
         }));
 
         view.findViewById(R.id.BTEditProfile).setOnClickListener((v) -> {
             if (currentProfile != null) {
                 ContentDialog.prompt(context, R.string.profile_name, currentProfile.getName(), (name) -> {
+                    String previousName = currentProfile.getName();
                     currentProfile.setName(name);
-                    currentProfile.save();
-                    loadProfileSpinner(sProfile);
+                    if (!currentProfile.save()) {
+                        currentProfile.setName(previousName);
+                        AppUtils.showToast(context, R.string.unable_to_save_profile);
+                    }
+                    else {
+                        currentProfile.setName(name.trim());
+                        loadProfileSpinner(sProfile);
+                    }
                 });
             }
             else AppUtils.showToast(context, R.string.no_profile_selected);
@@ -152,9 +186,15 @@ public class InputControlsFragment extends Fragment {
         view.findViewById(R.id.BTDuplicateProfile).setOnClickListener((v) -> {
             if (currentProfile != null) {
                 ContentDialog.confirm(context, R.string.do_you_want_to_duplicate_this_profile, () -> {
-                    currentProfile = manager.duplicateProfile(currentProfile);
-                    loadProfileSpinner(sProfile);
-                    updateLayout.run();
+                    ControlsProfile duplicate = manager.duplicateProfile(currentProfile);
+                    if (duplicate == null) {
+                        AppUtils.showToast(context, R.string.unable_to_save_profile);
+                    }
+                    else {
+                        currentProfile = duplicate;
+                        loadProfileSpinner(sProfile);
+                        updateLayout.run();
+                    }
                 });
             }
             else AppUtils.showToast(context, R.string.no_profile_selected);
@@ -337,6 +377,12 @@ public class InputControlsFragment extends Fragment {
                         Intent intent = new Intent(getContext(), ExternalControllerBindingsActivity.class);
                         intent.putExtra("profile_id", currentProfile.id);
                         intent.putExtra("controller_id", controller.getId());
+                        intent.putExtra(
+                                "teknoparrot_native_controls",
+                                teknoParrotNativeControls);
+                        intent.putExtra(
+                                "teknoparrot_profile_name",
+                                teknoParrotProfileName);
                         startActivity(intent);
                     }
                     else AppUtils.showToast(getContext(), R.string.no_profile_selected);

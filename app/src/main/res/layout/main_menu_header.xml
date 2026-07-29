@@ -2,14 +2,37 @@
 <FrameLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="124dp"
+    android:layout_height="148dp"
     android:background="?attr/colorPrimaryDark"
-    android:paddingLeft="16dp"
-    android:paddingBottom="24dp">
+    android:paddingLeft="18dp"
+    android:paddingBottom="16dp">
 
     <ImageView
-        android:layout_width="153dp"
-        android:layout_height="52dp"
+        android:layout_width="96dp"
+        android:layout_height="96dp"
         android:layout_gravity="left|bottom"
-        android:src="@drawable/logo" />
+        android:contentDescription="@string/app_name"
+        android:src="@drawable/teknoparrot_logo" />
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="left|bottom"
+        android:layout_marginLeft="108dp"
+        android:layout_marginBottom="18dp"
+        android:orientation="vertical">
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="TeknoParrot"
+            android:textColor="?attr/colorPrimaryText"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Windows compatibility runtime"
+            android:textColor="?attr/colorSecondaryText"
+            android:textSize="12sp" />
+    </LinearLayout>
 </FrameLayout>

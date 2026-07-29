@@ -47,7 +47,8 @@
             <ImageView
                 android:layout_width="70dp"
                 android:layout_height="70dp"
-                android:src="@mipmap/ic_launcher" />
+                android:contentDescription="@string/app_name"
+                android:src="@drawable/teknoparrot_logo" />
         </LinearLayout>
 
         <View style="@style/HorizontalLine" />

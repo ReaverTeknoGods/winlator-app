@@ -54,6 +54,7 @@ public class ContainerManager {
                             container.setRootDir(new File(homeDir, RootFS.USER+"-"+container.id));
                             JSONObject data = new JSONObject(FileUtils.readString(container.getConfigFile()));
                             container.loadData(data);
+                            if (container.werePackagePathsMigrated()) container.saveData();
                             containers.add(container);
                             maxContainerId = Math.max(maxContainerId, container.id);
                         }
@@ -95,7 +96,7 @@ public class ContainerManager {
         });
     }
 
-    private Container createContainer(JSONObject data) {
+    public Container createContainer(JSONObject data) {
         try {
             int id = maxContainerId + 1;
             data.put("id", id);
@@ -265,7 +266,7 @@ public class ContainerManager {
             File installedWineDir = RootFS.find(context).getInstalledWineDir();
             WineInfo wineInfo = WineInfo.fromIdentifier(context, wineVersion);
             File file = new File(installedWineDir, "container-pattern-"+wineInfo.fullVersion()+".tzst");
-            return TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, file, containerDir);
+            return TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, context, file, containerDir);
         }
     }
 }

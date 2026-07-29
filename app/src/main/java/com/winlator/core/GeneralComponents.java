@@ -128,7 +128,11 @@ public abstract class GeneralComponents {
                 items = new String[]{DefaultVersion.TURNIP};
                 break;
             case DXVK:
-                items = new String[]{DefaultVersion.MINOR_DXVK, DefaultVersion.MAJOR_DXVK};
+                items = new String[]{
+                    DefaultVersion.MINOR_DXVK,
+                    DefaultVersion.INTERMEDIATE_DXVK,
+                    DefaultVersion.MAJOR_DXVK
+                };
                 break;
             case VKD3D:
                 items = new String[]{DefaultVersion.VKD3D};
@@ -216,7 +220,7 @@ public abstract class GeneralComponents {
         else {
             File componentDir = getComponentDir(type, context);
             File source = new File(componentDir, type.lowerName()+"-"+identifier+".tzst");
-            boolean success = TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, source, destination, onExtractFileListener);
+            boolean success = TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, context, source, destination, onExtractFileListener);
             if (!success) {
                 String sourcePath = type.assetFolder()+"/"+type.lowerName()+"-"+defaultVersion+".tzst";
                 TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, context, sourcePath, destination, onExtractFileListener);

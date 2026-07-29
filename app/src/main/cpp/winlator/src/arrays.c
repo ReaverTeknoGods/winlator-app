@@ -192,6 +192,13 @@ void IntArray_addAll(IntArray* intArray, int valueCount, ...) {
     va_end(valist);
 }
 
+int IntArray_indexOf(IntArray* intArray, int value) {
+    for (int i = 0; i < intArray->size; i++) {
+        if (intArray->values[i] == value) return i;
+    }
+    return -1;
+}
+
 void IntArray_remove(IntArray* intArray, int offset, int count) {
     size_t newSize;
     int* newValues = memdel(intArray->values, intArray->size * sizeof(int), offset * sizeof(int), count * sizeof(int), &newSize);

@@ -1,0 +1,38 @@
+apply plugin: 'com.android.application'
+
+def sharedKeystorePath = System.getenv('TEKNOPARROT_DEBUG_KEYSTORE')
+
+android {
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.teknoparrot.winlator'
+        minSdkVersion 26
+        targetSdkVersion 28
+        versionCode 1
+        versionName '11.1-tp-bridge-stub'
+    }
+
+    if (sharedKeystorePath) {
+        signingConfigs {
+            sharedDebug {
+                storeFile file(sharedKeystorePath)
+                storePassword 'android'
+                keyAlias 'androiddebugkey'
+                keyPassword 'android'
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            minifyEnabled false
+            if (sharedKeystorePath)
+                signingConfig signingConfigs.sharedDebug
+        }
+    }
+}
+
+dependencies {
+    implementation project(':teknoparrot-bridge')
+}

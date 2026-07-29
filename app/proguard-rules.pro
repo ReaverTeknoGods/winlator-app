@@ -17,3 +17,7 @@
 #}
 
 -dontobfuscate
+
+# Loaded reflectively by the bridge library so the emulator service stub does
+# not need a compile-time dependency on the full Winlator app module.
+-keep class com.winlator.teknoparrot.TeknoParrotGuestDiagnosticBackend { public static *; }

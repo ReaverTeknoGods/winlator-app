@@ -43,6 +43,8 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     public final PreloaderDialog preloaderDialog = new PreloaderDialog(this);
     private boolean editInputControls = false;
     private int selectedProfileId;
+    private boolean teknoParrotNativeControls;
+    private String teknoParrotProfileName;
     private Callback<Uri> openFileCallback;
     private SharedPreferences preferences;
     private Fragment currentFragment;
@@ -67,6 +69,10 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         editInputControls = intent.getBooleanExtra("edit_input_controls", false);
         if (editInputControls) {
             selectedProfileId = intent.getIntExtra("selected_profile_id", 0);
+            teknoParrotNativeControls =
+                    intent.getBooleanExtra("teknoparrot_native_controls", false);
+            teknoParrotProfileName =
+                    intent.getStringExtra("teknoparrot_profile_name");
             actionBar.setHomeAsUpIndicator(R.drawable.icon_action_bar_back);
             onNavigationItemSelected(navigationView.getMenu().findItem(R.id.menu_item_input_controls));
             navigationView.setCheckedItem(R.id.menu_item_input_controls);
@@ -127,6 +133,12 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
 
     @Override
     public void onBackPressed() {
+        if (editInputControls) {
+            setResult(RESULT_OK);
+            finish();
+            return;
+        }
+
         if (currentFragment != null && currentFragment.isVisible()) {
             if (currentFragment instanceof BaseFileManagerFragment) {
                 BaseFileManagerFragment fileManagerFragment = (BaseFileManagerFragment)currentFragment;
@@ -195,7 +207,10 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
                 showFragment(new ContainersFragment());
                 break;
             case R.id.menu_item_input_controls:
-                showFragment(new InputControlsFragment(selectedProfileId));
+                showFragment(new InputControlsFragment(
+                        selectedProfileId,
+                        teknoParrotNativeControls,
+                        teknoParrotProfileName));
                 break;
             case R.id.menu_item_settings:
                 showFragment(new SettingsFragment());

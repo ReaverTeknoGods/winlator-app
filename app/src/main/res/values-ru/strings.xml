@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Winlator</string>
+    <string name="app_name">TeknoParrot Runtime</string>
     <string name="run">Запустить</string>
     <string name="edit">Редактировать</string>
     <string name="remove">Удалить</string>
@@ -16,7 +16,7 @@
     <string name="duplicating_container">Дублирование контейнера...</string>
     <string name="installing_system_files">Установка системных файлов...</string>
     <string name="updating_system_files">Обновление системных файлов...</string>
-    <string name="starting_up">Запуск...</string>
+    <string name="starting_up">Запуск игры TeknoParrot...</string>
     <string name="unable_to_install_system_files">Невозможно установить системные файлы</string>
     <string name="keyboard">Клавиатура</string>
     <string name="toggle_fullscreen">Полный экран</string>
@@ -67,6 +67,8 @@
     <string name="toggle_switch">Режим переключателя</string>
     <string name="profile_exported_to">Профиль экспортирован в</string>
     <string name="unable_to_import_profile">Невозможно импортировать профиль</string>
+    <string name="unable_to_open_profile">Не удалось открыть этот профиль управления</string>
+    <string name="unable_to_save_profile">Не удалось сохранить профиль управления</string>
     <string name="wine_configuration">Конфигурация Wine</string>
     <string name="enable_csmt">Включить CSMT (Command Stream Multi-Thread)</string>
     <string name="gpu_name">Имя GPU</string>

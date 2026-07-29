@@ -3,33 +3,49 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:gravity="center"
+    android:background="#F0151519"
     android:clickable="false"
     android:focusable="false">
 
     <LinearLayout
-        android:layout_width="wrap_content"
+        android:layout_width="280dp"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:paddingTop="22dp"
-        android:paddingBottom="22dp"
-        android:paddingLeft="32dp"
-        android:paddingRight="32dp"
-        android:gravity="center_vertical"
-        android:layout_gravity="center"
-        android:background="?attr/preloaderBackground">
+        android:orientation="vertical"
+        android:padding="28dp"
+        android:gravity="center_horizontal"
+        android:layout_gravity="center">
 
-        <ProgressBar
-            android:layout_width="64dp"
-            android:layout_height="64dp"
-            android:indeterminate="true"
-            android:layout_marginRight="16dp"
-            android:indeterminateDrawable="?attr/progressBarIndeterminateImage" />
+        <ImageView
+            android:id="@+id/TeknoParrotLoaderLogo"
+            android:layout_width="112dp"
+            android:layout_height="112dp"
+            android:contentDescription="@string/app_name"
+            android:src="@drawable/teknoparrot_logo" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="TeknoParrot"
+            android:textSize="23sp"
+            android:textStyle="bold"
+            android:textColor="#F5F3FF" />
 
         <TextView
             android:id="@+id/TextView"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textSize="20dp"
-            android:textColor="?attr/colorPrimaryText" />
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:textSize="15sp"
+            android:textColor="#B8B4C9" />
+
+        <ProgressBar
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="160dp"
+            android:layout_height="3dp"
+            android:layout_marginTop="22dp"
+            android:indeterminate="true"
+            android:indeterminateTint="#8B7CFF" />
     </LinearLayout>
 </FrameLayout>

@@ -29,6 +29,11 @@ public class WindowManager extends XResourceManager {
     private Window focusedWindow;
     private FocusRevertTo focusRevertTo = FocusRevertTo.NONE;
     private final ArrayList<OnWindowModificationListener> onWindowModificationListeners = new ArrayList<>();
+    private WindowPositionPolicy windowPositionPolicy;
+
+    public interface WindowPositionPolicy {
+        short[] resolve(Window window, short width, short height);
+    }
 
     public interface OnWindowModificationListener {
         default void onMapWindow(Window window) {}
@@ -57,6 +62,10 @@ public class WindowManager extends XResourceManager {
 
     public Window getWindow(int id) {
         return windows.get(id);
+    }
+
+    public void setWindowPositionPolicy(WindowPositionPolicy windowPositionPolicy) {
+        this.windowPositionPolicy = windowPositionPolicy;
     }
 
     public ArrayList<Window> findDialogWindows(int id) {
@@ -239,6 +248,27 @@ public class WindowManager extends XResourceManager {
         triggerOnChangeWindowZOrder(window);
     }
 
+    public void moveWindow(Window window, short x, short y) {
+        if (window == null || window == rootWindow ||
+                (window.getX() == x && window.getY() == y))
+            return;
+
+        short width = window.getWidth();
+        short height = window.getHeight();
+        changeWindowGeometry(window, x, y, width, height);
+
+        Window parent = window.getParent();
+        if (parent == null) return;
+        Window previousSibling = window.previousSibling();
+        boolean overrideRedirect = window.attributes.isOverrideRedirect();
+        window.sendEvent(Event.STRUCTURE_NOTIFY, new ConfigureNotify(
+            window, window, previousSibling, x, y, width, height,
+            window.getBorderWidth(), overrideRedirect));
+        parent.sendEvent(Event.SUBSTRUCTURE_NOTIFY, new ConfigureNotify(
+            parent, window, previousSibling, x, y, width, height,
+            window.getBorderWidth(), overrideRedirect));
+    }
+
     public void configureWindow(Window window, Bitmask valueMask, XInputStream inputStream) throws XRequestError {
         short x = window.getX();
         short y = window.getY();
@@ -276,6 +306,14 @@ public class WindowManager extends XResourceManager {
 
         if (width <= 0) throw new BadValue(width);
         if (height <= 0) throw new BadValue(height);
+
+        if (windowPositionPolicy != null) {
+            short[] position = windowPositionPolicy.resolve(window, width, height);
+            if (position != null && position.length >= 2) {
+                x = position[0];
+                y = position[1];
+            }
+        }
 
         Window parent = window.getParent();
         boolean overrideRedirect = window.attributes.isOverrideRedirect();

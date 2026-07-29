@@ -5,6 +5,7 @@ import com.winlator.core.AppUtils;
 import com.winlator.core.EnvVars;
 import com.winlator.core.FileUtils;
 import com.winlator.core.KeyValueSet;
+import com.winlator.core.PackagePathCompat;
 import com.winlator.core.WineInfo;
 import com.winlator.core.WineThemeManager;
 import com.winlator.widget.FrameRating;
@@ -17,7 +18,7 @@ import java.io.File;
 import java.util.Iterator;
 
 public class Container {
-    public static final String DEFAULT_ENV_VARS = "ZINK_DESCRIPTORS=lazy ZINK_DEBUG=compact MESA_SHADER_CACHE_DISABLE=false MESA_SHADER_CACHE_MAX_SIZE=512MB mesa_glthread=true WINEESYNC=1 TU_DEBUG=noconform";
+    public static final String DEFAULT_ENV_VARS = "ZINK_DESCRIPTORS=lazy ZINK_DEBUG=compact MESA_SHADER_CACHE_DISABLE=false MESA_SHADER_CACHE_MAX_SIZE=512MB mesa_glthread=true WINEESYNC=0 TU_DEBUG=noconform";
     public static final String DEFAULT_SCREEN_SIZE = "1280x720";
     public static final String DEFAULT_AUDIO_DRIVER = AudioDrivers.ALSA;
     public static final String DEFAULT_DXWRAPPER = DXWrappers.DXVK;
@@ -49,6 +50,7 @@ public class Container {
     private String box64Preset = Box64Preset.DEFAULT;
     private File rootDir;
     private JSONObject extraData;
+    private boolean packagePathsMigrated;
 
     public Container(int id) {
         this.id = id;
@@ -312,6 +314,7 @@ public class Container {
     }
 
     public void loadData(JSONObject data) throws JSONException {
+        packagePathsMigrated = PackagePathCompat.migrateStoredPaths(data);
         wineVersion = WineInfo.MAIN_WINE_INFO.identifier();
         dxwrapperConfig = "";
         graphicsDriverConfig = "";
@@ -387,6 +390,10 @@ public class Container {
                     break;
             }
         }
+    }
+
+    public boolean werePackagePathsMigrated() {
+        return packagePathsMigrated;
     }
 
     public static void checkObsoleteOrMissingProperties(JSONObject data) {

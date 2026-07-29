@@ -1,20 +1,88 @@
 apply plugin: 'com.android.application'
 
+def sharedKeystorePath = System.getenv('TEKNOPARROT_DEBUG_KEYSTORE')
+def releaseKeystorePath = System.getenv('TEKNOPARROT_RELEASE_KEYSTORE')
+def releaseStorePassword = System.getenv('TEKNOPARROT_RELEASE_STORE_PASSWORD')
+def releaseKeyAlias = System.getenv('TEKNOPARROT_RELEASE_KEY_ALIAS')
+def releaseKeyPassword = System.getenv('TEKNOPARROT_RELEASE_KEY_PASSWORD')
+def androidVersionName = System.getenv('TEKNOPARROT_ANDROID_VERSION_NAME') ?: '11.1-tp28'
+def androidVersionCode = Integer.parseInt(
+    System.getenv('TEKNOPARROT_ANDROID_VERSION_CODE') ?: '54')
+def teknoParrotRepositoryRoot = file(
+    System.getenv('TEKNOPARROT_REPOSITORY_ROOT') ?: '../..')
+def teknoParrotFixtureSource = new File(
+    teknoParrotRepositoryRoot, 'native/teknoparrot-bridge/bin')
+def teknoParrotWinSCardSource = new File(
+    teknoParrotFixtureSource, 'winscard-x86.dll')
+def teknoParrotGeneratedAssets = file(
+    "$buildDir/generated/teknoparrot-thin-assets-v1")
+def teknoParrotGeneratedResources = file("$buildDir/generated/teknoparrot-res")
+def teknoParrotLegacyWinSCardAsset = file(
+    'src/main/assets/teknoparrot/winscard-x86.dll')
+def teknoParrotBrandSource = new File(
+    teknoParrotRepositoryRoot,
+    'branding/teknoparrot.png')
+def teknoParrotFixtureNames = [
+    'android-winlator-service-bridge-diagnostics.bat',
+    'pipehelper.exe',
+    'pipehelper32.exe',
+    'bridgeguest64.exe',
+    'bridgeguest32.exe',
+    'windows-path-bootstrap.exe'
+]
+
 android {
     compileSdk 34
 
     defaultConfig {
-        applicationId 'com.winlator'
+        applicationId 'com.teknoparrot.winlator'
         minSdkVersion 26
         targetSdkVersion 28
-        versionCode 28
-        versionName "11.1"
+        versionCode androidVersionCode
+        versionName androidVersionName
+    }
+
+    signingConfigs {
+        if (sharedKeystorePath) {
+            sharedDebug {
+                storeFile file(sharedKeystorePath)
+                storePassword 'android'
+                keyAlias 'androiddebugkey'
+                keyPassword 'android'
+            }
+        }
+        if (releaseKeystorePath &&
+            releaseStorePassword &&
+            releaseKeyAlias &&
+            releaseKeyPassword) {
+            production {
+                storeFile file(releaseKeystorePath)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
     }
 
     buildTypes {
         debug {
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (sharedKeystorePath)
+                signingConfig signingConfigs.sharedDebug
+
+            ndk {
+                abiFilters 'arm64-v8a'
+            }
+        }
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (releaseKeystorePath &&
+                releaseStorePassword &&
+                releaseKeyAlias &&
+                releaseKeyPassword)
+                signingConfig signingConfigs.production
 
             ndk {
                 abiFilters 'arm64-v8a'
@@ -34,9 +102,137 @@ android {
             path 'src/main/cpp/CMakeLists.txt'
         }
     }
+
+    sourceSets.main.assets.srcDir teknoParrotGeneratedAssets
+    sourceSets.main.res.srcDir teknoParrotGeneratedResources
+
+    // The MIDI CMake target links these prebuilt libraries from src/main/jniLibs,
+    // so AGP 7.2 sees the same bytes once as jniLibs inputs and once as CMake
+    // imported outputs. Select that identical file deterministically instead of
+    // failing mergeDebugNativeLibs (observed on the pinned v11.1 Windows build).
+    packagingOptions {
+        [
+            'libc++_shared.so',
+            'libFLAC.so',
+            'libfluidsynth.so',
+            'libfluidsynth-assetloader.so',
+            'libgio-2.0.so',
+            'libglib-2.0.so',
+            'libgmodule-2.0.so',
+            'libgobject-2.0.so',
+            'libgthread-2.0.so',
+            'libinstpatch-1.0.so',
+            'liboboe.so',
+            'libogg.so',
+            'libopus.so',
+            'libpcre.so',
+            'libpcreposix.so',
+            'libsndfile.so',
+            'libvorbis.so',
+            'libvorbisenc.so',
+            'libvorbisfile.so'
+        ].each { library -> pickFirst "lib/arm64-v8a/${library}" }
+    }
 }
 
+task verifyTeknoParrotBrandArtwork {
+    doLast {
+        if (!teknoParrotBrandSource.isFile())
+            throw new GradleException("Missing TeknoParrot brand artwork: ${teknoParrotBrandSource}")
+    }
+}
+
+task stageTeknoParrotBrandArtwork(type: Copy) {
+    dependsOn verifyTeknoParrotBrandArtwork
+    from(teknoParrotBrandSource) {
+        rename { 'teknoparrot_logo.png' }
+    }
+    into new File(teknoParrotGeneratedResources, 'drawable-nodpi')
+}
+
+preBuild.dependsOn stageTeknoParrotBrandArtwork
+
+task verifyTeknoParrotWinSCardStub {
+    doLast {
+        if (!teknoParrotWinSCardSource.isFile() &&
+            !teknoParrotLegacyWinSCardAsset.isFile())
+            throw new GradleException(
+                "Missing WinSCard compatibility stub: ${teknoParrotWinSCardSource}. " +
+                'Build native/teknoparrot-bridge before the Android package.')
+    }
+}
+
+task stageTeknoParrotWinSCardStub(type: Copy) {
+    dependsOn verifyTeknoParrotWinSCardStub
+    onlyIf { !teknoParrotLegacyWinSCardAsset.isFile() }
+    from teknoParrotWinSCardSource
+    into new File(teknoParrotGeneratedAssets, 'teknoparrot')
+}
+
+preBuild.dependsOn stageTeknoParrotWinSCardStub
+
+task verifyTeknoParrotBridgeFixtures {
+    doLast {
+        teknoParrotFixtureNames.each { name ->
+            def fixture = new File(teknoParrotFixtureSource, name)
+            if (!fixture.isFile())
+                throw new GradleException("Missing TeknoParrot guest fixture: ${fixture}")
+        }
+    }
+}
+
+task stageTeknoParrotBridgeFixtures(type: Copy) {
+    dependsOn verifyTeknoParrotBridgeFixtures
+    from(teknoParrotFixtureSource) {
+        include teknoParrotFixtureNames
+    }
+    into new File(teknoParrotGeneratedAssets, 'teknoparrot')
+}
+
+preBuild.dependsOn stageTeknoParrotBridgeFixtures
+
+task verifyNoUnmanagedUpstreamPackagePaths {
+    def compatibilityFile = file('src/main/java/com/winlator/core/PackagePathCompat.java')
+    def sourceTrees = [
+        fileTree('src/main') {
+            include '**/*.java', '**/*.xml', '**/*.gradle', '**/*.cmake', '**/CMakeLists.txt',
+                '**/*.c', '**/*.cpp', '**/*.h', '**/*.conf', '**/*.sh'
+        },
+        fileTree('../../android_alsa') {
+            include '**/*.c', '**/*.h', '**/*.conf', '**/*.sh', '**/CMakeLists.txt'
+        }
+    ]
+    inputs.files(sourceTrees)
+
+    doLast {
+        def forbidden = [
+            '/data/data/com.winlator',
+            '/data/user/0/com.winlator',
+            'com.winlator.FileProvider'
+        ]
+        def violations = []
+        sourceTrees.each { tree ->
+            tree.files.each { source ->
+                if (source.canonicalFile == compatibilityFile.canonicalFile) return
+                def text = source.getText('UTF-8')
+                forbidden.each { value ->
+                    if (text.contains(value))
+                        violations.add("${source}: unmanaged '${value}'")
+                }
+            }
+        }
+        if (!violations.isEmpty()) {
+            throw new GradleException(
+                'Upstream Winlator application paths must be handled by PackagePathCompat:\n' +
+                violations.join('\n'))
+        }
+    }
+}
+
+preBuild.dependsOn verifyNoUnmanagedUpstreamPackagePaths
+
 dependencies {
+    implementation project(':teknoparrot-bridge')
     implementation 'androidx.appcompat:appcompat:1.4.0'
     implementation 'androidx.preference:preference:1.2.1'
     implementation 'com.google.android.material:material:1.4.0'

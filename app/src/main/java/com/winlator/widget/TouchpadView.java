@@ -33,6 +33,7 @@ public class TouchpadView extends View implements View.OnCapturedPointerListener
     private boolean pointerButtonLeftEnabled = true;
     private boolean pointerButtonRightEnabled = true;
     private boolean moveCursorToTouchpoint = false;
+    private boolean directTouchMode = false;
     private Finger fingerPointerButtonLeft;
     private Finger fingerPointerButtonRight;
     private float scrollAccumY = 0;
@@ -141,6 +142,9 @@ public class TouchpadView extends View implements View.OnCapturedPointerListener
         int actionMasked = event.getActionMasked();
         if (pointerId >= MAX_FINGERS) return true;
 
+        if (directTouchMode && !event.isFromSource(InputDevice.SOURCE_MOUSE))
+            return onDirectTouchEvent(event, actionIndex, pointerId, actionMasked);
+
         switch (actionMasked) {
             case MotionEvent.ACTION_DOWN:
             case MotionEvent.ACTION_POINTER_DOWN:
@@ -187,6 +191,52 @@ public class TouchpadView extends View implements View.OnCapturedPointerListener
                 break;
         }
 
+        return true;
+    }
+
+    private boolean onDirectTouchEvent(
+            MotionEvent event, int actionIndex, int pointerId, int actionMasked) {
+        switch (actionMasked) {
+            case MotionEvent.ACTION_DOWN:
+            case MotionEvent.ACTION_POINTER_DOWN: {
+                Finger finger = new Finger(
+                    event.getX(actionIndex), event.getY(actionIndex));
+                fingers[pointerId] = finger;
+                numFingers++;
+                xServer.injectPointerMove(finger.x, finger.y);
+                pressPointerButtonLeft(finger);
+                break;
+            }
+            case MotionEvent.ACTION_MOVE:
+                for (byte id = 0; id < MAX_FINGERS; id++) {
+                    Finger finger = fingers[id];
+                    if (finger == null) continue;
+                    int index = event.findPointerIndex(id);
+                    if (index < 0) continue;
+                    finger.update(event.getX(index), event.getY(index));
+                    xServer.injectPointerMove(finger.x, finger.y);
+                }
+                break;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_POINTER_UP: {
+                Finger finger = fingers[pointerId];
+                if (finger != null) {
+                    finger.update(event.getX(actionIndex), event.getY(actionIndex));
+                    xServer.injectPointerMove(finger.x, finger.y);
+                    releasePointerButtonLeft(finger);
+                    fingers[pointerId] = null;
+                    numFingers--;
+                }
+                break;
+            }
+            case MotionEvent.ACTION_CANCEL:
+                if (xServer.pointer.isButtonPressed(Pointer.Button.BUTTON_LEFT))
+                    xServer.injectPointerButtonRelease(Pointer.Button.BUTTON_LEFT);
+                fingerPointerButtonLeft = null;
+                for (byte id = 0; id < MAX_FINGERS; id++) fingers[id] = null;
+                numFingers = 0;
+                break;
+        }
         return true;
     }
 
@@ -351,6 +401,10 @@ public class TouchpadView extends View implements View.OnCapturedPointerListener
 
     public void setMoveCursorToTouchpoint(boolean moveCursorToTouchpoint) {
         this.moveCursorToTouchpoint = moveCursorToTouchpoint;
+    }
+
+    public void setDirectTouchMode(boolean directTouchMode) {
+        this.directTouchMode = directTouchMode;
     }
 
     public boolean onExternalMouseEvent(MotionEvent event) {

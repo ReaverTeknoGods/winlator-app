@@ -37,6 +37,10 @@ import java.util.Timer;
 import java.util.TimerTask;
 
 public class InputControlsView extends View {
+    public interface InputEventListener {
+        void onInputEvent(Binding binding, boolean isActionDown, float offset);
+    }
+
     public static final float DEFAULT_OVERLAY_OPACITY = 0.4f;
     private boolean editMode = false;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -60,6 +64,8 @@ public class InputControlsView extends View {
     private Timer mouseMoveTimer;
     private final PointF mouseMoveOffset = new PointF();
     private boolean showTouchscreenControls = true;
+    private boolean hideStickControls = false;
+    private InputEventListener inputEventListener;
 
     public InputControlsView(Context context) {
         super(context);
@@ -112,7 +118,9 @@ public class InputControlsView extends View {
             if (!profile.isElementsLoaded()) profile.loadElements(this);
             List<ControlElement> elements = profile.getElements();
             if (touchpadView != null && elements.isEmpty()) touchpadView.setPointerButtonRightEnabled(true);
-            if (showTouchscreenControls) for (ControlElement element : elements) element.draw(canvas);
+            if (showTouchscreenControls) for (ControlElement element : elements) {
+                if (!isHiddenControl(element)) element.draw(canvas);
+            }
         }
 
         super.onDraw(canvas);
@@ -223,13 +231,37 @@ public class InputControlsView extends View {
         this.showTouchscreenControls = showTouchscreenControls;
     }
 
+    public void setHideStickControls(boolean hideStickControls) {
+        this.hideStickControls = hideStickControls;
+        invalidate();
+    }
+
+    public void setInputEventListener(InputEventListener inputEventListener) {
+        this.inputEventListener = inputEventListener;
+    }
+
     private synchronized ControlElement intersectElement(float x, float y) {
         if (profile != null) {
             for (ControlElement element : profile.getElements()) {
-                if (element.containsPoint(x, y)) return element;
+                if (!isHiddenControl(element) && element.containsPoint(x, y))
+                    return element;
             }
         }
         return null;
+    }
+
+    private boolean isHiddenControl(ControlElement element) {
+        return hideStickControls && element.getType() == ControlElement.Type.STICK;
+    }
+
+    /**
+     * Returns whether a play-mode touch belongs to a visible virtual control.
+     * The prepared TeknoParrot input bridge uses this before forwarding
+     * absolute pointer data, so pressing an overlay button cannot also move a
+     * light gun or touch-driven aim point underneath it.
+     */
+    public synchronized boolean isPointOverControl(float x, float y) {
+        return !editMode && showTouchscreenControls && intersectElement(x, y) != null;
     }
 
     public Paint getPaint() {
@@ -382,6 +414,7 @@ public class InputControlsView extends View {
 
                     touchpadView.setPointerButtonLeftEnabled(true);
                     for (ControlElement element : profile.getElements()) {
+                        if (isHiddenControl(element)) continue;
                         if (element.handleTouchDown(pointerId, x, y)) handled = true;
                         if (element.getBindingAt(0) == Binding.MOUSE_LEFT_BUTTON && element.getLastBindingIndex() == 0) {
                             touchpadView.setPointerButtonLeftEnabled(false);
@@ -398,6 +431,7 @@ public class InputControlsView extends View {
 
                         handled = false;
                         for (ControlElement element : profile.getElements()) {
+                            if (isHiddenControl(element)) continue;
                             if (element.handleTouchMove(movePointerId, x, y)) handled = true;
                         }
                         if (!handled) touchpadView.onTouchEvent(event);
@@ -409,7 +443,11 @@ public class InputControlsView extends View {
                 case MotionEvent.ACTION_CANCEL: {
                     float x = event.getX(actionIndex);
                     float y = event.getY(actionIndex);
-                    for (ControlElement element : profile.getElements()) if (element.handleTouchUp(pointerId, x, y)) handled = true;
+                    for (ControlElement element : profile.getElements()) {
+                        if (!isHiddenControl(element) &&
+                                element.handleTouchUp(pointerId, x, y))
+                            handled = true;
+                    }
                     if (!handled) touchpadView.onTouchEvent(event);
                     break;
                 }
@@ -450,6 +488,9 @@ public class InputControlsView extends View {
     }
 
     public void handleInputEvent(Binding binding, boolean isActionDown, float offset) {
+        if (inputEventListener != null)
+            inputEventListener.onInputEvent(binding, isActionDown, offset);
+
         if (binding.isGamepad()) {
             WinHandler winHandler = xServer != null ? xServer.getWinHandler() : null;
             GamepadState state = profile.getGamepadState();

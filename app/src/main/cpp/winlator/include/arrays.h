@@ -44,6 +44,7 @@ typedef struct IntArray {
 extern void IntArray_add(IntArray* intArray, int value);
 extern void IntArray_addAt(IntArray* intArray, int index, int value);
 extern void IntArray_addAll(IntArray* intArray, int valueCount, ...);
+extern int IntArray_indexOf(IntArray* intArray, int value);
 extern void IntArray_remove(IntArray* intArray, int offset, int count);
 extern int IntArray_removeAt(IntArray* intArray, int index);
 extern void IntArray_clear(IntArray* intArray);

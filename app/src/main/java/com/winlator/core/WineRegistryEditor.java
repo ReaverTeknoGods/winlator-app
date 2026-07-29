@@ -139,6 +139,11 @@ public class WineRegistryEditor implements Closeable {
         }
     }
 
+    /** Ensures that a registry key exists without adding a synthetic value. */
+    public boolean ensureKey(String key) {
+        return getKeyLocation(key) != null || createKey(key) != null;
+    }
+
     public String getStringValue(String key, String name) {
         return getStringValue(key, name, null);
     }

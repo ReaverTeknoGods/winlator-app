@@ -901,7 +901,7 @@ public class ControlElement {
                 for (byte i = 0; i < 4; i++) {
                     float value = i == 1 || i == 3 ? deltaX : deltaY;
                     Binding binding = getBindingAt(i);
-                    if (binding.isGamepad()) {
+                    if (isAnalogGamepadDirection(binding)) {
                         value = Mathf.clamp(Math.max(0, Math.abs(value) - 0.01f) * Mathf.sign(value) * STICK_SENSITIVITY, -1, 1);
                         inputControlsView.handleInputEvent(binding, true, value);
                         this.states[i] = true;
@@ -975,6 +975,17 @@ public class ControlElement {
             return true;
         }
         else return false;
+    }
+
+    private static boolean isAnalogGamepadDirection(Binding binding) {
+        return binding == Binding.GAMEPAD_LEFT_THUMB_UP ||
+            binding == Binding.GAMEPAD_LEFT_THUMB_RIGHT ||
+            binding == Binding.GAMEPAD_LEFT_THUMB_DOWN ||
+            binding == Binding.GAMEPAD_LEFT_THUMB_LEFT ||
+            binding == Binding.GAMEPAD_RIGHT_THUMB_UP ||
+            binding == Binding.GAMEPAD_RIGHT_THUMB_RIGHT ||
+            binding == Binding.GAMEPAD_RIGHT_THUMB_DOWN ||
+            binding == Binding.GAMEPAD_RIGHT_THUMB_LEFT;
     }
 
     public boolean handleTouchUp(int pointerId, float x, float y) {

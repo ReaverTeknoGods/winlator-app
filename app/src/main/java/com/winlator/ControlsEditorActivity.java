@@ -58,6 +58,11 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         inputControlsView.setOverlayOpacity(0.6f);
 
         profile = InputControlsManager.loadProfile(this, ControlsProfile.getProfileFile(this, getIntent().getIntExtra("profile_id", 0)));
+        if (profile == null || profile.getName() == null || profile.getName().trim().isEmpty()) {
+            AppUtils.showToast(this, R.string.unable_to_open_profile);
+            finish();
+            return;
+        }
         ((TextView)findViewById(R.id.TVProfileName)).setText(profile.getName());
         inputControlsView.setProfile(profile);
 
@@ -92,6 +97,12 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             }
             return true;
         });
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) AppUtils.hideSystemUI(this);
     }
 
     @Override

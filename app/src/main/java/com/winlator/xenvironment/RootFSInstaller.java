@@ -21,6 +21,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
@@ -80,6 +81,27 @@ public abstract class RootFSInstaller {
     public static void installIfNeeded(final MainActivity activity) {
         RootFS rootFS = RootFS.find(activity);
         if (!rootFS.isValid() || rootFS.getVersion() < LATEST_VERSION) install(activity);
+    }
+
+    /**
+     * Installs the bundled root filesystem from a Binder worker without
+     * requiring Winlator's container UI. Callers must stay off the main
+     * thread because extraction can take several seconds on a clean device.
+     */
+    public static synchronized void installIfNeededBlocking(Context context) throws IOException {
+        RootFS rootFS = RootFS.find(context);
+        if (rootFS.isValid() && rootFS.getVersion() >= LATEST_VERSION) return;
+
+        final File rootDir = rootFS.getRootDir();
+        SettingsFragment.resetBox64Version(context);
+        clearRootDir(rootDir);
+        boolean success = TarCompressorUtils.extract(
+            TarCompressorUtils.Type.ZSTD, context, FILENAME, rootDir);
+        if (!success)
+            throw new IOException("Could not install Winlator's bundled root filesystem.");
+
+        rootFS.createRFSVersionFile(LATEST_VERSION);
+        resetContainerRFSVersions(context);
     }
 
     private static void clearOptDir(File optDir) {

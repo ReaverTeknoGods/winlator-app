@@ -34,6 +34,8 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.preference.PreferenceManager;
 
 import com.google.android.material.tabs.TabLayout;
+import com.winlator.BuildConfig;
+import com.winlator.MainActivity;
 import com.winlator.R;
 import com.winlator.SettingsFragment;
 
@@ -44,7 +46,7 @@ import java.util.TimerTask;
 
 public abstract class AppUtils {
     public static final String DIRECTORY_DOWNLOADS = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).getPath();
-    public static final String INTERNAL_STORAGE = "/data/data/com.winlator/storage";
+    public static final String INTERNAL_STORAGE = "/data/data/"+BuildConfig.APPLICATION_ID+"/storage";
     private static WeakReference<Toast> globalToastReference = null;
 
     public static class RestartApplicationOptions {
@@ -70,6 +72,10 @@ public abstract class AppUtils {
 
     public static void restartApplication(Context context, RestartApplicationOptions options) {
         Intent intent = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
+        if (intent == null) {
+            intent = new Intent(context, MainActivity.class);
+            intent.setAction(Intent.ACTION_MAIN);
+        }
         Intent mainIntent = Intent.makeRestartActivityTask(intent.getComponent());
 
         if (options != null) {

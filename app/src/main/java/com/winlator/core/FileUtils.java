@@ -26,7 +26,9 @@ import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Stack;
 import java.util.UUID;
@@ -52,17 +54,21 @@ public abstract class FileUtils {
     }
 
     public static String readString(Context context, String assetFile) {
-        return new String(read(context, assetFile), StandardCharsets.UTF_8);
+        byte[] data = read(context, assetFile);
+        return data != null ? new String(data, StandardCharsets.UTF_8) : null;
     }
 
     public static String readString(File file) {
-        return new String(read(file), StandardCharsets.UTF_8);
+        byte[] data = read(file);
+        return data != null ? new String(data, StandardCharsets.UTF_8) : null;
     }
 
     public static String readString(Context context, Uri uri) {
         StringBuilder sb = new StringBuilder();
-        try (InputStream inputStream = context.getContentResolver().openInputStream(uri);
-             BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
+        try (InputStream inputStream = context.getContentResolver().openInputStream(uri)) {
+            if (inputStream == null) return null;
+            BufferedReader reader = new BufferedReader(
+                new InputStreamReader(inputStream, StandardCharsets.UTF_8));
             String line;
             while ((line = reader.readLine()) != null) sb.append(line);
             return sb.toString();
@@ -93,6 +99,90 @@ public abstract class FileUtils {
             e.printStackTrace();
         }
         return false;
+    }
+
+    /**
+     * Persists critical private state without ever truncating the live file.
+     * The temporary file lives beside the destination so the final rename is
+     * atomic on Android's app-data filesystem. A failed write is intentionally
+     * left as <code>*.installing</code> evidence and retried on the next save.
+     */
+    public static boolean writeStringAtomic(File file, String data) {
+        if (data == null) return false;
+        return writeAtomic(file, data.getBytes(StandardCharsets.UTF_8));
+    }
+
+    public static boolean writeAtomic(File file, byte[] data) {
+        if (file == null || data == null || !ensureParentDirectory(file)) return false;
+        File temporary = new File(file.getAbsolutePath()+".installing");
+        try (FileOutputStream output = new FileOutputStream(temporary, false)) {
+            output.write(data);
+            output.flush();
+            output.getFD().sync();
+        }
+        catch (IOException error) {
+            return false;
+        }
+
+        return replaceFile(temporary, file);
+    }
+
+    public static boolean copyAssetAtomic(Context context, String assetFile, File destination) {
+        if (context == null || assetFile == null || destination == null ||
+            !ensureParentDirectory(destination)) return false;
+
+        File temporary = new File(destination.getAbsolutePath()+".installing");
+        try (InputStream input = context.getAssets().open(assetFile);
+             FileOutputStream output = new FileOutputStream(temporary, false)) {
+            byte[] buffer = new byte[StreamUtils.BUFFER_SIZE];
+            int count;
+            while ((count = input.read(buffer)) >= 0) {
+                if (count > 0) output.write(buffer, 0, count);
+            }
+            output.flush();
+            output.getFD().sync();
+        }
+        catch (IOException error) {
+            return false;
+        }
+
+        return replaceFile(temporary, destination);
+    }
+
+    private static boolean ensureParentDirectory(File file) {
+        File parent = file.getParentFile();
+        return parent == null || parent.isDirectory() || parent.mkdirs();
+    }
+
+    private static boolean replaceFile(File temporary, File destination) {
+        try {
+            Files.move(
+                temporary.toPath(),
+                destination.toPath(),
+                StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING);
+            return true;
+        }
+        catch (AtomicMoveNotSupportedException error) {
+            // Fall through to a replace move on filesystems that do not expose
+            // atomic rename through java.nio.
+        }
+        catch (IOException error) {
+            // Some Android providers reject ATOMIC_MOVE while reporting a
+            // generic IOException. The same-directory replace below is still
+            // safe to attempt and preserves the live file if it also fails.
+        }
+
+        try {
+            Files.move(
+                temporary.toPath(),
+                destination.toPath(),
+                StandardCopyOption.REPLACE_EXISTING);
+            return true;
+        }
+        catch (IOException error) {
+            return false;
+        }
     }
 
     public static void symlink(File linkTarget, File linkFile) {
@@ -212,6 +302,10 @@ public abstract class FileUtils {
             try (InputStream inStream = context.getAssets().open(assetFile);
                  BufferedOutputStream outStream = new BufferedOutputStream(new FileOutputStream(dstFile), StreamUtils.BUFFER_SIZE)) {
                 StreamUtils.copy(inStream, outStream);
+            }
+            catch (IOException e) {}
+            try {
+                PackagePathCompat.patchExtractedFile(context, dstFile);
             }
             catch (IOException e) {}
         }
@@ -410,7 +504,7 @@ public abstract class FileUtils {
         Intent intent;
         if (path.startsWith("file://")) {
             File file = new File(Uri.decode(path.replace("file://", "")));
-            intent = new Intent(Intent.ACTION_VIEW, FileProvider.getUriForFile(activity, "com.winlator.FileProvider", file));
+            intent = new Intent(Intent.ACTION_VIEW, FileProvider.getUriForFile(activity, activity.getPackageName()+".FileProvider", file));
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         }
         else intent = new Intent(Intent.ACTION_VIEW, Uri.parse(path));

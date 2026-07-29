@@ -110,7 +110,7 @@ public abstract class TarCompressorUtils {
 
     public static boolean extract(Type type, Context context, String assetFile, File destination, OnExtractFileListener onExtractFileListener) {
         try {
-            return extract(type, context.getAssets().open(assetFile), destination, onExtractFileListener);
+            return extract(type, context, context.getAssets().open(assetFile), destination, onExtractFileListener);
         }
         catch (IOException e) {
             return false;
@@ -124,7 +124,7 @@ public abstract class TarCompressorUtils {
     public static boolean extract(Type type, Context context, Uri source, File destination, OnExtractFileListener onExtractFileListener) {
         if (source == null) return false;
         try {
-            return extract(type, context.getContentResolver().openInputStream(source), destination, onExtractFileListener);
+            return extract(type, context, context.getContentResolver().openInputStream(source), destination, onExtractFileListener);
         }
         catch (FileNotFoundException e) {
             return false;
@@ -136,16 +136,24 @@ public abstract class TarCompressorUtils {
     }
 
     public static boolean extract(Type type, File source, File destination, OnExtractFileListener onExtractFileListener) {
+        return extract(type, null, source, destination, onExtractFileListener);
+    }
+
+    public static boolean extract(Type type, Context context, File source, File destination) {
+        return extract(type, context, source, destination, null);
+    }
+
+    public static boolean extract(Type type, Context context, File source, File destination, OnExtractFileListener onExtractFileListener) {
         if (source == null || !source.isFile()) return false;
         try {
-            return extract(type, new BufferedInputStream(new FileInputStream(source), StreamUtils.BUFFER_SIZE), destination, onExtractFileListener);
+            return extract(type, context, new BufferedInputStream(new FileInputStream(source), StreamUtils.BUFFER_SIZE), destination, onExtractFileListener);
         }
         catch (FileNotFoundException e) {
             return false;
         }
     }
 
-    private static boolean extract(Type type, InputStream source, File destination, OnExtractFileListener onExtractFileListener) {
+    private static boolean extract(Type type, Context context, InputStream source, File destination, OnExtractFileListener onExtractFileListener) {
         if (source == null) return false;
         try (InputStream inStream = getCompressorInputStream(type, source);
              ArchiveInputStream tar = new TarArchiveInputStream(inStream)) {
@@ -174,6 +182,9 @@ public abstract class TarCompressorUtils {
                 }
 
                 FileUtils.chmod(file, 0771);
+                if (context != null && !entry.isDirectory() && !entry.isSymbolicLink()) {
+                    PackagePathCompat.patchExtractedFile(context, file);
+                }
             }
             return true;
         }

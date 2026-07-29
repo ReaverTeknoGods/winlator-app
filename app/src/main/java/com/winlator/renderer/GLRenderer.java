@@ -50,6 +50,7 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     private final Drawable rootCursorDrawable;
     private final ArrayList<RenderableWindow> renderableWindows = new ArrayList<>();
     private boolean forceWindowsFullscreen;
+    private boolean rotatePreparedWindowsCounterClockwise;
     private boolean fullscreen = false;
     private boolean toggleFullscreen = false;
     protected boolean viewportNeedsUpdate = true;
@@ -209,12 +210,36 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         }
     }
 
-    private void renderWindowDrawable(Drawable drawable, int x, int y, boolean transparent, FullscreenTransformation fullscreenTransformation) {
+    private void renderWindowDrawable(
+            Drawable drawable,
+            int x,
+            int y,
+            boolean transparent,
+            FullscreenTransformation fullscreenTransformation,
+            boolean rotateCounterClockwise) {
         synchronized (drawable.renderLock) {
             Texture texture = drawable.getTexture();
             texture.updateFromDrawable();
 
-            if (fullscreenTransformation != null) {
+            if (rotateCounterClockwise) {
+                float scale = Math.min(
+                    (float)xServer.screenInfo.width / drawable.height,
+                    (float)xServer.screenInfo.height / drawable.width);
+                float targetWidth = drawable.height * scale;
+                float targetHeight = drawable.width * scale;
+                float targetX = (xServer.screenInfo.width - targetWidth) * 0.5f;
+                float targetY = (xServer.screenInfo.height - targetHeight) * 0.5f;
+
+                // Rotate only the prepared game's large borderless client.
+                // The X desktop and Android controls stay landscape while the
+                // portrait framebuffer is presented upright and aspect-fit.
+                XForm.set(
+                    tmpXForm1,
+                    0.0f, -targetHeight,
+                    targetWidth, 0.0f,
+                    targetX, targetY + targetHeight);
+            }
+            else if (fullscreenTransformation != null) {
                 XForm.set(tmpXForm1, fullscreenTransformation.x, fullscreenTransformation.y, fullscreenTransformation.width, fullscreenTransformation.height);
             }
             else XForm.set(tmpXForm1, x, y, drawable.width, drawable.height);
@@ -240,7 +265,13 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         try (XLock lock = xServer.lock(XServer.Lockable.DRAWABLE_MANAGER)) {
             for (RenderableWindow window : renderableWindows) {
                 if (!window.content.isOffscreenStorage()) {
-                    renderWindowDrawable(window.content, window.rootX, window.rootY, window.transparent, window.fullscreenTransformation);
+                    renderWindowDrawable(
+                        window.content,
+                        window.rootX,
+                        window.rootY,
+                        window.transparent,
+                        window.fullscreenTransformation,
+                        window.rotateCounterClockwise);
                 }
             }
         }
@@ -299,8 +330,10 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                 short height = window.getHeight();
                 FullscreenTransformation fullscreenTransformation = null;
 
-                boolean inBounds = width >= ScreenInfo.MIN_WIDTH && height >= ScreenInfo.MIN_HEIGHT && width < xServer.screenInfo.width && height < xServer.screenInfo.height;
-                if (window.getType() == Window.Type.NORMAL && inBounds && window.hasNoDecorations()) {
+                boolean needsAspectFit =
+                    width >= ScreenInfo.MIN_WIDTH && height >= ScreenInfo.MIN_HEIGHT &&
+                    (width != xServer.screenInfo.width || height != xServer.screenInfo.height);
+                if (window.getType() == Window.Type.NORMAL && needsAspectFit && window.hasNoDecorations()) {
                     fullscreenTransformation = window.getFullscreenTransformation();
                     if (fullscreenTransformation == null) window.setFullscreenTransformation(fullscreenTransformation = new FullscreenTransformation(window));
                     fullscreenTransformation.update(xServer.screenInfo, window.getWidth(), window.getHeight());
@@ -316,9 +349,21 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                 }
                 else window.setFullscreenTransformation(null);
 
-                renderableWindows.add(new RenderableWindow(window.getContent(), x, y, transparent, fullscreenTransformation));
+                renderableWindows.add(new RenderableWindow(
+                    window.getContent(),
+                    x,
+                    y,
+                    transparent,
+                    fullscreenTransformation,
+                    shouldRotatePreparedWindow(window)));
             }
-            else renderableWindows.add(new RenderableWindow(window.getContent(), x, y, transparent, null));
+            else renderableWindows.add(new RenderableWindow(
+                window.getContent(),
+                x,
+                y,
+                transparent,
+                null,
+                shouldRotatePreparedWindow(window)));
         }
 
         if (window.attributes.isRenderSubwindows()) {
@@ -326,6 +371,21 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                 collectRenderableWindows(child, child.getX() + x, child.getY() + y);
             }
         }
+    }
+
+    private boolean shouldRotatePreparedWindow(Window window) {
+        return rotatePreparedWindowsCounterClockwise &&
+            window.getType() == Window.Type.NORMAL &&
+            window.hasNoDecorations() &&
+            window.getWidth() >= ScreenInfo.MIN_WIDTH &&
+            window.getHeight() >= ScreenInfo.MIN_HEIGHT;
+    }
+
+    public void setRotatePreparedWindowsCounterClockwise(boolean enabled) {
+        rotatePreparedWindowsCounterClockwise = enabled;
+        viewportNeedsUpdate = true;
+        xServerView.queueEvent(this::updateScene);
+        xServerView.requestRender();
     }
 
     private void removeRenderableWindow(Window window) {

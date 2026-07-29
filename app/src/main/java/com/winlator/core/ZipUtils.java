@@ -120,6 +120,7 @@ public abstract class ZipUtils {
                 }
 
                 FileUtils.chmod(file, 0771);
+                if (!entry.isDirectory()) PackagePathCompat.patchExtractedFile(context, file);
             }
         }
         catch (IOException e) {

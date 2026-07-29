@@ -8,3 +8,6 @@
 /build
 /captures
 .externalNativeBuild
+**/build/
+**/.gradle/
+app/src/main/assets/teknoparrot/winscard-x86.dll
