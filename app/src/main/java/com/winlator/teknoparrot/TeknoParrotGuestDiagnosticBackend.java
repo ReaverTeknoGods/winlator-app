@@ -128,6 +128,7 @@ public final class TeknoParrotGuestDiagnosticBackend {
             return environmentStatus("permission-required", null);
 
         synchronized (PROVISION_LOCK) {
+            ensureSharedGamesDirectory();
             RootFSInstaller.installIfNeededBlocking(context);
             RootFS rootFS = RootFS.find(context);
             ContainerManager manager = new ContainerManager(context);
@@ -184,7 +185,7 @@ public final class TeknoParrotGuestDiagnosticBackend {
             data.put("cpuList", Container.getFallbackCPUList());
             data.put("cpuListWoW64", Container.getFallbackCPUList());
             data.put("wincomponents", Container.DEFAULT_WINCOMPONENTS);
-            data.put("drives", Container.DEFAULT_DRIVES);
+            data.put("drives", Container.TEKNOPARROT_MANAGED_DRIVES);
             data.put("startupSelection", Container.STARTUP_SELECTION_ESSENTIAL);
             // Start the managed container with a compatibility-oriented preset.
             // Prepared OpenParrot launches select their title-specific runtime
@@ -211,12 +212,21 @@ public final class TeknoParrotGuestDiagnosticBackend {
         container.setEnvVars(envVars.toString());
         container.setCPUList(Container.getFallbackCPUList());
         container.setCPUListWoW64(Container.getFallbackCPUList());
-        container.setDrives(Container.DEFAULT_DRIVES);
+        container.setDrives(Container.TEKNOPARROT_MANAGED_DRIVES);
         container.setStartupSelection(Container.STARTUP_SELECTION_ESSENTIAL);
         container.setBox64Preset(Box64Preset.CONSERVATIVE);
         container.putExtra(MANAGED_CONTAINER_MARKER, MANAGED_CONTAINER_TEMPLATE);
-        container.putExtra("teknoparrotEnvironmentVersion", 4);
+        container.putExtra("teknoparrotEnvironmentVersion", 5);
         container.saveData();
+    }
+
+    private static void ensureSharedGamesDirectory() throws IOException {
+        File gamesDirectory = new File(AppUtils.TEKNOPARROT_GAMES_DIRECTORY);
+        if ((!gamesDirectory.isDirectory() && !gamesDirectory.mkdirs()) ||
+            !gamesDirectory.canRead() ||
+            !gamesDirectory.canWrite())
+            throw new IOException(
+                "Winlator cannot access the shared TeknoParrotGames directory.");
     }
 
     private static boolean isContainerActive(RootFS rootFS, int containerId) {
