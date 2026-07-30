@@ -49,7 +49,7 @@ final class TeknoParrotRuntimePackageInstaller {
     static {
         ALLOWED_ROOTS.put(
             "OpenParrotWin32",
-            new HashSet<>(Arrays.asList("OpenParrotWin32", "OpenParrotWin32Legacy")));
+            new HashSet<>(Arrays.asList("OpenParrotWin32")));
         ALLOWED_ROOTS.put(
             "OpenParrotx64",
             new HashSet<>(Arrays.asList("OpenParrotWin64")));

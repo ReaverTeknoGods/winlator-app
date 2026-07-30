@@ -46,21 +46,6 @@ public final class TeknoParrotGuestDiagnosticBackend {
         "bngrw.dll",
         "iDmacDrv32.dll",
         "OpenParrot.dll",
-        "OpenParrotBG4.dll",
-        "OpenParrotAquapazza.dll",
-        "OpenParrotCrazySpeed.dll",
-        "OpenParrotEADP.dll",
-        "OpenParrotDirty.dll",
-        "OpenParrotFNFSB.dll",
-        "OpenParrotChaseHQ2.dll",
-        "ChaseFpuHelper.dll",
-        "OpenParrotKonamiLoader.exe",
-        "OpenParrotLoader.exe"
-    };
-    private static final String[] MANAGED_LEGACY_RUNTIME_FILES = {
-        "bngrw.dll",
-        "iDmacDrv32.dll",
-        "OpenParrot.dll",
         "OpenParrotKonamiLoader.exe",
         "OpenParrotLoader.exe"
     };
@@ -278,13 +263,6 @@ public final class TeknoParrotGuestDiagnosticBackend {
             AppUtils.INTERNAL_STORAGE, "TeknoParrotRuntime/OpenParrotWin32");
         for (String name : MANAGED_RUNTIME_FILES) {
             File file = new File(openParrotDirectory, name);
-            if (!file.isFile() || file.length() == 0)
-                return false;
-        }
-        File legacyOpenParrotDirectory = new File(
-            AppUtils.INTERNAL_STORAGE, "TeknoParrotRuntime/OpenParrotWin32Legacy");
-        for (String name : MANAGED_LEGACY_RUNTIME_FILES) {
-            File file = new File(legacyOpenParrotDirectory, name);
             if (!file.isFile() || file.length() == 0)
                 return false;
         }
