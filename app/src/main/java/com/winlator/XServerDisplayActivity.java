@@ -329,7 +329,6 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 if (intent.hasExtra("exec_path")) win32AppWorkarounds.applyStartupWorkarounds(FileUtils.getName(intent.getStringExtra("exec_path")));
                 else if (preparedWindowsLaunch != null)
                 {
-                    applyPreparedTitleScopedCoreSelection();
                     win32AppWorkarounds.applyPreparedStartupWorkarounds(
                         preparedWindowsLaunch.executable,
                         preparedWindowsLaunch.arguments);
@@ -1085,6 +1084,11 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 return;
             }
             if (preparedWindowsLaunch != null && preparedWindowsLaunch.productionBridge &&
+                !ensurePreparedApm3StartupExecutable()) {
+                runOnUiThread(this::finish);
+                return;
+            }
+            if (preparedWindowsLaunch != null && preparedWindowsLaunch.productionBridge &&
                 !ensurePreparedMarioKartStackExecutable()) {
                 runOnUiThread(this::finish);
                 return;
@@ -1131,16 +1135,19 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 String preparedWineDebug = wineDebugChannels.isEmpty()
                     ? "+warn,+err"
                     : "+" + wineDebugChannels.replace(",", ",+");
+                // A prepared launch's per-game diagnostic switch should
+                // include Wine's exception channel. Without it, guest faults
+                // report only the final address and lose the register/stack
+                // context needed to distinguish a game bug from a renderer,
+                // input, or loader failure. Production launches still take
+                // the logging-disabled branch above and remain WINEDEBUG=-all.
+                if (!preparedWineDebug.contains("+seh"))
+                    preparedWineDebug += ",+seh";
                 if ("eadp-dual-io".equals(preparedWindowsLaunch.compatibilityPreset)) {
                     if (!preparedWineDebug.contains("+loaddll"))
                         preparedWineDebug += ",+loaddll";
                     if (!preparedWineDebug.contains("+reg"))
                         preparedWineDebug += ",+reg";
-                }
-                if (isCrazySpeedPreparedLaunch() ||
-                    isPreparedCxbxrCrazyTaxiTitle()) {
-                    if (!preparedWineDebug.contains("+seh"))
-                        preparedWineDebug += ",+seh";
                 }
                 envVars.put("WINEDEBUG", preparedWineDebug);
                 envVars.put("DXVK_LOG_LEVEL", "info");
@@ -1148,6 +1155,9 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 envVars.put("BOX64_NOBANNER", "0");
                 envVars.put("BOX64_LOG", "1");
                 envVars.put("BOX64_DYNAREC_MISSING", "1");
+                envVars.put("BOX64_SHOWSEGV", "1");
+                envVars.put("BOX64_SHOWBT", "1");
+                envVars.put("BOX64_ROLLING_LOG", "32");
                 if ("eadp-dual-io".equals(preparedWindowsLaunch.compatibilityPreset)) {
                     // Wine's DLL/registry channels are sufficient for this
                     // title. Keep Box64 and DXVK quiet so the timing-sensitive
@@ -1156,11 +1166,6 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                     envVars.put("BOX64_LOG", "0");
                     envVars.put("BOX64_DYNAREC_MISSING", "0");
                     envVars.put("DXVK_LOG_LEVEL", "none");
-                }
-                if (isPreparedCxbxrCrazyTaxiTitle()) {
-                    envVars.put("BOX64_SHOWSEGV", "1");
-                    envVars.put("BOX64_SHOWBT", "1");
-                    envVars.put("BOX64_ROLLING_LOG", "32");
                 }
             }
             // OpenParrot's default Get/SetThreadContext injection is unsafe for
@@ -1352,6 +1357,23 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                     envVars.put("TP_LOGTOFILE",
                         preparedWindowsLaunch.debugLoggingEnabled ? "1" : "0");
                 }
+                // Guilty Gear's Wine x86 startup owns ntdll's loader lock until
+                // the executable entry point. A remote thread created before
+                // that boundary deadlocks behind the primary thread. Use
+                // OpenParrotLoader's original primary-thread entry-point path:
+                // run Wine initialization to completion, suspend at the real
+                // entry point, and execute LoadLibrary on that same thread.
+                else if ("post-start-remote-thread".equals(
+                        preparedWindowsLaunch.compatibilityPreset)) {
+                    envVars.remove("TP_REMOTETHREAD");
+                    envVars.remove("TP_POSTSTART_REMOTETHREAD_MS");
+                    envVars.remove("TP_ENTRYPOINT_REMOTETHREAD_MS");
+                    envVars.remove("TP_LOADER_MANAGED_INIT");
+                    envVars.remove("TP_CHILD_PRIMARY_THREAD_INIT");
+                    envVars.remove("BOX64_DYNAREC_VOLATILE_METADATA");
+                    envVars.remove("BOX64_SHOWBT");
+                    envVars.remove("BOX64_ROLLING_LOG");
+                }
                 // The WMMT family needs Wine to publish its target modules before the
                 // remote thread is created, but OpenParrot must still initialize
                 // before the game executes. Park its entry point while Wine
@@ -1511,7 +1533,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                         preparedWindowsLaunch.compatibilityPreset))
                     envVars.put(
                         "WINEDEBUG",
-                        "+warn,+err,+winsock,+iphlpapi,+debugstr");
+                        "+warn,+err,+seh,+debugstr");
             }
             // The companion package currently has no working POSIX shm
             // backend for Wine ESYNC.  Force wineserver synchronization so
@@ -2737,6 +2759,18 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             normalized.contains("\\the king of fighters xiii (2010)");
     }
 
+    private boolean isAkaiKatanaPreparedLaunch() {
+        if (preparedWindowsLaunch == null)
+            return false;
+        String gameExecutable = findPreparedGameExecutable();
+        if (gameExecutable == null)
+            return false;
+        String normalized = gameExecutable.replace('/', '\\')
+            .toLowerCase(java.util.Locale.ROOT);
+        return normalized.endsWith("\\game.exe") &&
+            normalized.contains("\\akai katana shin ");
+    }
+
     private String findPreparedGameExecutable() {
         boolean allowExtensionlessElf = isPreparedElfLoaderLaunch();
         for (int index = preparedWindowsLaunch.arguments.length - 1; index >= 0; index--) {
@@ -2747,31 +2781,6 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 return candidate;
         }
         return null;
-    }
-
-    /**
-     * Keep title-specific experimental cores isolated even when a game was
-     * imported before its managed recipe gained the dedicated argument.
-     */
-    private void applyPreparedTitleScopedCoreSelection() {
-        if (preparedWindowsLaunch == null ||
-            preparedWindowsLaunch.arguments.length == 0)
-            return;
-
-        String runtimeArgument = preparedWindowsLaunch.arguments[0];
-        if (runtimeArgument == null ||
-            !runtimeArgument.replace('/', '\\')
-                .toLowerCase(java.util.Locale.ROOT)
-                .endsWith("\\openparrotwin32\\openparrot"))
-            return;
-
-        if ("eadp-dual-io".equals(preparedWindowsLaunch.compatibilityPreset))
-            preparedWindowsLaunch.arguments[0] =
-                ".\\OpenParrotWin32\\OpenParrotEADP";
-        else if ("dirty-driving-fullscreen".equals(
-                     preparedWindowsLaunch.compatibilityPreset))
-            preparedWindowsLaunch.arguments[0] =
-                ".\\OpenParrotWin32\\OpenParrotDirty";
     }
 
     /**
@@ -3366,6 +3375,166 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         catch (Exception error) {
             Log.e("TeknoParrotLaunch", "Could not prepare the LAA game executable.", error);
             return false;
+        }
+    }
+
+    /**
+     * Guilty Gear Xrd's apm_x86.dll starts and joins its input worker from
+     * DllMain. Wine's experimental WoW64 worker immediately needs
+     * ntdll.loader_section, which is still owned by the process-attach thread,
+     * so both threads wait forever before the executable entry point.
+     *
+     * Keep the game dump immutable. A private executable directory contains an
+     * equally private apm_x86 copy whose user DllMain returns TRUE without
+     * starting the cabinet worker. The DLL's real PE entry point remains intact
+     * so its security cookie, TLS, CRT, and static constructors still initialize.
+     * Keeping the canonical module name also makes OpenParrot's later
+     * LoadLibrary("apm_x86.dll") reuse this module instead of loading the unsafe
+     * original a second time. OpenParrot replaces the APM3 exports before game
+     * code uses them, so the original cabinet worker is neither required nor
+     * allowed to race the emulated implementation.
+     */
+    private boolean ensurePreparedApm3StartupExecutable() {
+        if (!"post-start-remote-thread".equals(
+                preparedWindowsLaunch.compatibilityPreset))
+            return true;
+
+        int executableArgument = -1;
+        for (int index = preparedWindowsLaunch.arguments.length - 1; index >= 0; index--) {
+            String candidate = preparedWindowsLaunch.arguments[index];
+            if (candidate != null && candidate.matches("(?i)^[CDE]:\\\\[^/\"]+\\.exe$")) {
+                executableArgument = index;
+                break;
+            }
+        }
+        if (executableArgument < 0)
+            return false;
+
+        String gameExecutable = preparedWindowsLaunch.arguments[executableArgument];
+        try {
+            if (!isPreparedDosPathWithinDrive(gameExecutable, false))
+                throw new IOException("The APM3 executable left its declared Wine drive.");
+            File sourceExecutable =
+                new File(WineUtils.dosToUnixPath(gameExecutable, container))
+                    .getCanonicalFile();
+            if (!sourceExecutable.isFile())
+                throw new IOException("The APM3 source executable is missing.");
+
+            File sourceApm = new File(sourceExecutable.getParentFile(), "apm_x86.dll")
+                .getCanonicalFile();
+            if (!sourceApm.isFile())
+                throw new IOException("The title's apm_x86.dll is missing.");
+
+            File sourceDirectory = sourceExecutable.getParentFile();
+            File sourceDirectoryParent = sourceDirectory.getParentFile();
+            if (sourceDirectoryParent == null)
+                throw new IOException("The APM3 executable has no parent directory.");
+            File stagedDirectory = new File(
+                sourceDirectoryParent,
+                sourceDirectory.getName() + ".teknoparrot-apm3");
+            if (!stagedDirectory.isDirectory() && !stagedDirectory.mkdirs())
+                throw new IOException("Could not create the private APM3 launch directory.");
+
+            File stagedExecutable =
+                new File(stagedDirectory, sourceExecutable.getName());
+            File stagedApm = new File(stagedDirectory, "apm_x86.dll");
+            if (!FileUtils.copy(sourceExecutable, stagedExecutable) ||
+                !FileUtils.copy(sourceApm, stagedApm))
+                throw new IOException("Could not create the private APM3 launch files.");
+
+            patchGuiltyGearApm3UserDllMainReturnTrue(stagedApm);
+            if (stagedExecutable.length() != sourceExecutable.length() ||
+                stagedApm.length() != sourceApm.length())
+                throw new IOException("The private APM3 launch files changed size.");
+
+            if (!stagedExecutable.setLastModified(sourceExecutable.lastModified()))
+                Log.w("TeknoParrotLaunch",
+                    "Could not preserve the APM3 executable timestamp.");
+            if (!stagedApm.setLastModified(sourceApm.lastModified()))
+                Log.w("TeknoParrotLaunch", "Could not preserve the APM3 DLL timestamp.");
+
+            String originalDirectory = FileUtils.getDirname(gameExecutable);
+            String originalDirectoryParent = FileUtils.getDirname(originalDirectory);
+            preparedWindowsLaunch.arguments[executableArgument] =
+                originalDirectoryParent + "\\" + stagedDirectory.getName() + "\\" +
+                    sourceExecutable.getName();
+            envVars.put("TP_GAME_WORKING_DIRECTORY", originalDirectory);
+            if (preparedWindowsLaunch.debugLoggingEnabled)
+                Log.i("TeknoParrotLaunch",
+                    "Prepared loader-lock-safe APM3 launch copies for " +
+                        sourceExecutable.getName() + '.');
+            return true;
+        }
+        catch (Exception error) {
+            Log.e("TeknoParrotLaunch",
+                "Could not prepare the loader-lock-safe APM3 executable.", error);
+            return false;
+        }
+    }
+
+    private static void patchGuiltyGearApm3UserDllMainReturnTrue(File dll)
+            throws IOException {
+        try (RandomAccessFile file = new RandomAccessFile(dll, "rw")) {
+            if (file.length() < 0x100)
+                throw new IOException("The APM3 DLL is not a valid PE image.");
+            file.seek(0);
+            if (file.readUnsignedByte() != 'M' || file.readUnsignedByte() != 'Z')
+                throw new IOException("The APM3 DLL has no DOS header.");
+            file.seek(0x3c);
+            long peOffset = readLittleEndianDword(file);
+            if (peOffset <= 0 || peOffset + 24 > file.length())
+                throw new IOException("The APM3 DLL has an invalid PE offset.");
+            file.seek(peOffset);
+            if (file.readUnsignedByte() != 'P' || file.readUnsignedByte() != 'E' ||
+                file.readUnsignedByte() != 0 || file.readUnsignedByte() != 0)
+                throw new IOException("The APM3 DLL has no PE signature.");
+
+            file.seek(peOffset + 6);
+            int sectionCount =
+                file.readUnsignedByte() | (file.readUnsignedByte() << 8);
+            file.seek(peOffset + 20);
+            int optionalHeaderSize =
+                file.readUnsignedByte() | (file.readUnsignedByte() << 8);
+            long sectionTable = peOffset + 24 + optionalHeaderSize;
+            final long userDllMainRva = 0x11640L;
+            long userDllMainOffset = -1;
+            for (int section = 0; section < sectionCount; section++) {
+                long sectionOffset = sectionTable + (section * 40L);
+                if (sectionOffset + 40 > file.length())
+                    throw new IOException("The APM3 DLL section table is truncated.");
+                file.seek(sectionOffset + 8);
+                long virtualSize = readLittleEndianDword(file);
+                long virtualAddress = readLittleEndianDword(file);
+                long rawSize = readLittleEndianDword(file);
+                long rawOffset = readLittleEndianDword(file);
+                long mappedSize = Math.max(virtualSize, rawSize);
+                if (userDllMainRva >= virtualAddress &&
+                    userDllMainRva < virtualAddress + mappedSize) {
+                    userDllMainOffset =
+                        rawOffset + (userDllMainRva - virtualAddress);
+                    break;
+                }
+            }
+            byte[] expectedUserDllMain = new byte[] {
+                0x55, (byte)0x8b, (byte)0xec, (byte)0x8b,
+                0x45, 0x0c, (byte)0x83, (byte)0xe8,
+                0x00, 0x74, 0x19
+            };
+            byte[] returnTrue = new byte[] {
+                (byte)0xb8, 0x01, 0x00, 0x00, 0x00,
+                (byte)0xc2, 0x0c, 0x00
+            };
+            if (userDllMainOffset < 0 ||
+                userDllMainOffset + expectedUserDllMain.length > file.length())
+                throw new IOException("The APM3 user DllMain is outside raw data.");
+            file.seek(userDllMainOffset);
+            for (byte expected : expectedUserDllMain) {
+                if (file.readUnsignedByte() != (expected & 0xff))
+                    throw new IOException(
+                        "The APM3 user DllMain does not match the supported Guilty Gear build.");
+            }
+            file.seek(userDllMainOffset);
+            file.write(returnTrue);
         }
     }
 

@@ -138,6 +138,16 @@ public class Win32AppWorkarounds {
         else if (compatibilityPreset.equals("wine-gstreamer")) {
             applyWineGStreamerWorkaround();
         }
+        else if (compatibilityPreset.equals("post-start-remote-thread")) {
+            // Guilty Gear Xrd REV2 APM3 reaches its startup movie immediately
+            // after D3D9 initialization. The ordinary Box64 executable treats
+            // GTK as a native GStreamer dependency, partially initializes the
+            // plugin registry, and then aborts when gst-libav is registered a
+            // second time. Route this title through the existing media-only
+            // Box64 executable, which removes that erroneous GTK dependency
+            // while retaining Wine-GStreamer and the bundled codecs.
+            applyWineGStreamerWorkaround();
+        }
         else if (compatibilityPreset.equals("wmmt-terminal") ||
                  compatibilityPreset.equals("wmmt-no-terminal")) {
             // The WMMT family is 64-bit, while Winlator's optional Microsoft
@@ -207,13 +217,6 @@ public class Win32AppWorkarounds {
                 // handling; this title runs with the normal x87 path on Windows
                 // and desktop Wine, so keep the workaround isolated.
                 envVars.put("BOX64_DYNAREC_X87DOUBLE", "0");
-                // OpenParrotLoader injects this title-specific compatibility DLL
-                // before the unchanged shared core. It replaces Chase's four
-                // validated x87 products with deterministic integer IEEE-754
-                // multiplication and supplies the minimal local DirectPlay state
-                // needed to avoid Wine's invalid WOW64 Host callback frame.
-                envVars.put("TP_PRELOAD_DLL",
-                    "E:\\TeknoParrotRuntime\\OpenParrotWin32\\ChaseFpuHelper.dll");
             });
         }
     }

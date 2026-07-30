@@ -62,6 +62,8 @@ final class ActivityLaunchContract {
     static final String COMPATIBILITY_PRESET_PORTRAIT_WINDOW_COUNTER_CLOCKWISE =
         "portrait-window-counter-clockwise";
     static final String COMPATIBILITY_PRESET_PARKED_ENTRYPOINT = "parked-entrypoint";
+    static final String COMPATIBILITY_PRESET_POST_START_REMOTE_THREAD =
+        "post-start-remote-thread";
     static final String COMPATIBILITY_PRESET_WINED3D_REMOTE_THREAD =
         "wined3d-remote-thread";
     static final String COMPATIBILITY_PRESET_WINED3D_PARKED_ENTRYPOINT =
@@ -256,6 +258,7 @@ final class ActivityLaunchContract {
             !COMPATIBILITY_PRESET_DIRECT_TOUCH_JVS.equals(value) &&
             !COMPATIBILITY_PRESET_BOX64_INTERPRETER.equals(value) &&
             !COMPATIBILITY_PRESET_PORTRAIT_WINDOW_COUNTER_CLOCKWISE.equals(value) &&
+            !COMPATIBILITY_PRESET_POST_START_REMOTE_THREAD.equals(value) &&
             !COMPATIBILITY_PRESET_PARKED_ENTRYPOINT.equals(value) &&
             !COMPATIBILITY_PRESET_WINED3D_REMOTE_THREAD.equals(value) &&
             !COMPATIBILITY_PRESET_WINED3D_PARKED_ENTRYPOINT.equals(value))
