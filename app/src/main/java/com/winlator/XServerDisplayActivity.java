@@ -77,6 +77,7 @@ import com.winlator.inputcontrols.InputControlsManager;
 import com.winlator.math.Mathf;
 import com.winlator.renderer.GLRenderer;
 import com.winlator.teknoparrot.ForwardedInputActivityBridge;
+import com.winlator.teknoparrot.ForwardedInputMapping;
 import com.winlator.teknoparrot.ForwardedInputProtocol;
 import com.winlator.teknoparrot.ForwardedInputSessionRegistry;
 import com.winlator.teknoparrot.PreparedSessionActivityLauncher;
@@ -1978,44 +1979,47 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 break;
             case GAMEPAD_LEFT_THUMB_LEFT:
                 forwardedInputBridge.onVirtualAxis(
-                        0, isActionDown ? -bindingMagnitude(offset) : 0.0f);
+                        0, ForwardedInputMapping.directionalAxisValue(
+                                offset, isActionDown, true));
                 break;
             case GAMEPAD_LEFT_THUMB_RIGHT:
                 forwardedInputBridge.onVirtualAxis(
-                        0, isActionDown ? bindingMagnitude(offset) : 0.0f);
+                        0, ForwardedInputMapping.directionalAxisValue(
+                                offset, isActionDown, false));
                 break;
             case GAMEPAD_LEFT_THUMB_UP:
                 forwardedInputBridge.onVirtualAxis(
-                        1, isActionDown ? -bindingMagnitude(offset) : 0.0f);
+                        1, ForwardedInputMapping.directionalAxisValue(
+                                offset, isActionDown, true));
                 break;
             case GAMEPAD_LEFT_THUMB_DOWN:
                 forwardedInputBridge.onVirtualAxis(
-                        1, isActionDown ? bindingMagnitude(offset) : 0.0f);
+                        1, ForwardedInputMapping.directionalAxisValue(
+                                offset, isActionDown, false));
                 break;
             case GAMEPAD_RIGHT_THUMB_LEFT:
                 forwardedInputBridge.onVirtualAxis(
-                        2, isActionDown ? -bindingMagnitude(offset) : 0.0f);
+                        2, ForwardedInputMapping.directionalAxisValue(
+                                offset, isActionDown, true));
                 break;
             case GAMEPAD_RIGHT_THUMB_RIGHT:
                 forwardedInputBridge.onVirtualAxis(
-                        2, isActionDown ? bindingMagnitude(offset) : 0.0f);
+                        2, ForwardedInputMapping.directionalAxisValue(
+                                offset, isActionDown, false));
                 break;
             case GAMEPAD_RIGHT_THUMB_UP:
                 forwardedInputBridge.onVirtualAxis(
-                        3, isActionDown ? -bindingMagnitude(offset) : 0.0f);
+                        3, ForwardedInputMapping.directionalAxisValue(
+                                offset, isActionDown, true));
                 break;
             case GAMEPAD_RIGHT_THUMB_DOWN:
                 forwardedInputBridge.onVirtualAxis(
-                        3, isActionDown ? bindingMagnitude(offset) : 0.0f);
+                        3, ForwardedInputMapping.directionalAxisValue(
+                                offset, isActionDown, false));
                 break;
             default:
                 break;
         }
-    }
-
-    private static float bindingMagnitude(float offset) {
-        float magnitude = Math.abs(offset);
-        return magnitude > 0.0f ? magnitude : 1.0f;
     }
 
     private void showInputControls(ControlsProfile profile) {

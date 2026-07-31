@@ -85,6 +85,23 @@ public final class ForwardedInputMapping {
         return (short)Math.round(clamped * Short.MAX_VALUE);
     }
 
+    public static float directionalAxisValue(
+            float offset,
+            boolean isActionDown,
+            boolean negativeDirection) {
+        if (!isActionDown)
+            return 0.0f;
+
+        // Winlator's touchscreen stick dispatches the same signed offset to
+        // both directional bindings. Preserve that sign so the second binding
+        // cannot overwrite every movement as LEFT/UP. A zero offset still
+        // represents a keyboard/button binding and therefore needs the bound
+        // direction's full-scale fallback.
+        if (offset != 0.0f)
+            return Math.max(-1.0f, Math.min(1.0f, offset));
+        return negativeDirection ? -1.0f : 1.0f;
+    }
+
     public static int toUnsignedQ15(float value) {
         if (Float.isNaN(value))
             return 0;
