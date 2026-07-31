@@ -38,11 +38,15 @@ final class ActivityLaunchContract {
     static final String COMPATIBILITY_PRESET_WINE_GSTREAMER = "wine-gstreamer";
     static final String COMPATIBILITY_PRESET_TAITO_LEGACY_SCARD = "taito-legacy-scard";
     static final String COMPATIBILITY_PRESET_DIRTY_DRIVING_FULLSCREEN = "dirty-driving-fullscreen";
+    static final String COMPATIBILITY_PRESET_EN_EINS_NATIVE_FULLSCREEN =
+        "en-eins-native-fullscreen";
     static final String COMPATIBILITY_PRESET_WMMT_TERMINAL = "wmmt-terminal";
     static final String COMPATIBILITY_PRESET_WMMT_NO_TERMINAL = "wmmt-no-terminal";
     static final String COMPATIBILITY_PRESET_WMMT3_YACARD = "wmmt3-yacard";
     static final String COMPATIBILITY_PRESET_CXBXR_WMMT_YACARD = "cxbxr-wmmt-yacard";
     static final String COMPATIBILITY_PRESET_CXBXR_PERFORMANCE = "cxbxr-performance";
+    static final String COMPATIBILITY_PRESET_CXBXR_CHIHIRO_TYPE3 =
+        "cxbxr-chihiro-type3";
     static final String COMPATIBILITY_PRESET_WACKY_RACES_NETWORK = "wacky-races-network";
     static final String COMPATIBILITY_PRESET_INITIAL_D8 = "initial-d8";
     static final String COMPATIBILITY_PRESET_INITIAL_D_THE_ARCADE =
@@ -237,11 +241,13 @@ final class ActivityLaunchContract {
             !COMPATIBILITY_PRESET_WINE_GSTREAMER.equals(value) &&
             !COMPATIBILITY_PRESET_TAITO_LEGACY_SCARD.equals(value) &&
             !COMPATIBILITY_PRESET_DIRTY_DRIVING_FULLSCREEN.equals(value) &&
+            !COMPATIBILITY_PRESET_EN_EINS_NATIVE_FULLSCREEN.equals(value) &&
             !COMPATIBILITY_PRESET_WMMT_TERMINAL.equals(value) &&
             !COMPATIBILITY_PRESET_WMMT_NO_TERMINAL.equals(value) &&
             !COMPATIBILITY_PRESET_WMMT3_YACARD.equals(value) &&
             !COMPATIBILITY_PRESET_CXBXR_WMMT_YACARD.equals(value) &&
             !COMPATIBILITY_PRESET_CXBXR_PERFORMANCE.equals(value) &&
+            !COMPATIBILITY_PRESET_CXBXR_CHIHIRO_TYPE3.equals(value) &&
             !COMPATIBILITY_PRESET_WACKY_RACES_NETWORK.equals(value) &&
             !COMPATIBILITY_PRESET_INITIAL_D8.equals(value) &&
             !COMPATIBILITY_PRESET_INITIAL_D_THE_ARCADE.equals(value) &&

@@ -33,6 +33,9 @@ public class InputControlsManager {
     private static final int LEGACY_GUNDAM_PROFILE_ID = 9053;
     private static final String LEGACY_GUNDAM_PROFILE_SHA256 =
         "e6359997772c7d79fa2dfe84e7bbc9d48042d6aec6b5d5e53e90ebafc4f156f1";
+    private static final int LEGACY_BATTLE_GEAR_PROFILE_ID = 9008;
+    private static final String LEGACY_BATTLE_GEAR_PROFILE_SHA256 =
+        "52e6bdb110102c9f4c7d168835c58bc9033381da3b4793c484795b4494df57a6";
     private final Context context;
     private ArrayList<ControlsProfile> profiles;
     private int maxProfileId;
@@ -137,8 +140,11 @@ public class InputControlsManager {
     private boolean shouldRefreshBundledProfile(
             File targetFile, int profileId, boolean appWasUpdated) throws IOException {
         if (appWasUpdated && profileId < 9000) return true;
-        return profileId == LEGACY_GUNDAM_PROFILE_ID &&
-            LEGACY_GUNDAM_PROFILE_SHA256.equals(sha256(targetFile));
+        String targetSha256 = sha256(targetFile);
+        return (profileId == LEGACY_GUNDAM_PROFILE_ID &&
+                LEGACY_GUNDAM_PROFILE_SHA256.equals(targetSha256)) ||
+            (profileId == LEGACY_BATTLE_GEAR_PROFILE_ID &&
+                LEGACY_BATTLE_GEAR_PROFILE_SHA256.equals(targetSha256));
     }
 
     private String sha256(File file) throws IOException {

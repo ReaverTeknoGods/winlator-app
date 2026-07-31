@@ -1118,6 +1118,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             // their configured values so its diagnostic workflow is unaffected.
             if (preparedWindowsLaunch != null && !preparedWindowsLaunch.debugLoggingEnabled) {
                 envVars.put("TP_ANDROID_DEBUG_LOGGING", "0");
+                envVars.remove("TP_DIRTY_LOCAL_DIAGNOSTICS");
+                envVars.remove("TP_ENEINS_DIAGNOSTICS");
                 envVars.put("WINEDEBUG", "-all");
                 envVars.put("DXVK_LOG_LEVEL", "none");
                 envVars.put("DXVK_LOG_PATH", "none");
@@ -1132,6 +1134,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             }
             else if (preparedWindowsLaunch != null) {
                 envVars.put("TP_ANDROID_DEBUG_LOGGING", "1");
+                envVars.remove("TP_DIRTY_LOCAL_DIAGNOSTICS");
+                envVars.remove("TP_ENEINS_DIAGNOSTICS");
                 String preparedWineDebug = wineDebugChannels.isEmpty()
                     ? "+warn,+err"
                     : "+" + wineDebugChannels.replace(",", ",+");
@@ -2759,6 +2763,18 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             normalized.contains("\\the king of fighters xiii (2010)");
     }
 
+    private boolean isKofXiiiClimaxPreparedLaunch() {
+        if (preparedWindowsLaunch == null)
+            return false;
+        String gameExecutable = findPreparedGameExecutable();
+        if (gameExecutable == null)
+            return false;
+        String normalized = gameExecutable.replace('/', '\\')
+            .toLowerCase(java.util.Locale.ROOT);
+        return normalized.endsWith("\\game.exe") &&
+            normalized.contains("\\the king of fighters xiii climax ");
+    }
+
     private boolean isAkaiKatanaPreparedLaunch() {
         if (preparedWindowsLaunch == null)
             return false;
@@ -2857,7 +2873,15 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         // aggressive production preset leaves the game rendering at 60 FPS
         // behind a stale gray presenter surface and later exits. Keep this
         // exception tied to the exact imported game executable.
-        if (isKofXiiiPreparedLaunch())
+        if (isKofXiiiPreparedLaunch() || isKofXiiiClimaxPreparedLaunch())
+            return configuredPreset;
+
+        // Battle Fantasia can complete its D3D9 startup with the container's
+        // configured intermediate preset, while the aggressive production
+        // preset intermittently terminates game.exe before its first surface
+        // is mapped. Keep the exception tied to the exact imported executable
+        // and folder so other OpenParrot x86 titles retain the fast preset.
+        if (isBattleFantasiaPreparedLaunch())
             return configuredPreset;
 
         // Tekken 7 reaches a clean 60 FPS D3D11 render with the configured
@@ -2890,6 +2914,18 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             .toLowerCase(java.util.Locale.ROOT);
         return normalized.contains("\\big buck world ") &&
             normalized.endsWith("\\game");
+    }
+
+    private boolean isBattleFantasiaPreparedLaunch() {
+        if (preparedWindowsLaunch == null)
+            return false;
+        String gameExecutable = findPreparedGameExecutable();
+        if (gameExecutable == null)
+            return false;
+        String normalized = gameExecutable.replace('/', '\\')
+            .toLowerCase(java.util.Locale.ROOT);
+        return normalized.endsWith("\\battlefantasia\\game.exe") ||
+            normalized.endsWith("\\battle fantasia\\game.exe");
     }
 
     private boolean validatePreparedWindowsLaunch() {
@@ -3776,8 +3812,19 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 // everywhere else.
                 envVars.put("TP_ANDROID_WMMT_TERMINAL_DIRECT_RECV", "1");
             }
-            String windowedValue = "fullscreen".equals(
-                preparedWindowsLaunch.displayMode) ? "0" : "1";
+            // En-Eins renders correctly through DXVK only when the guest creates
+            // its native fullscreen D3D9 device while Winlator leaves that X11
+            // surface untransformed.  Treating the Android display itself as
+            // fullscreen enables GLRenderer's aspect transformation and yields
+            // a healthy 60 FPS stream of black frames.  Keep this title's
+            // container display centered, but request native fullscreen in the
+            // guest INI.
+            boolean useNativeEnEinsFullscreen =
+                "en-eins-native-fullscreen".equals(
+                    preparedWindowsLaunch.compatibilityPreset);
+            String windowedValue =
+                ("fullscreen".equals(preparedWindowsLaunch.displayMode) ||
+                 useNativeEnEinsFullscreen) ? "0" : "1";
             List<String> result = new ArrayList<>(
                 source.size() + (applyResolution ? 5 : 3) +
                     (applyWmmtNetwork ? 5 : 0) + (applyStarWarsDisplay ? 1 : 0) +
