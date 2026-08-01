@@ -36,6 +36,11 @@ public class InputControlsManager {
     private static final int LEGACY_BATTLE_GEAR_PROFILE_ID = 9008;
     private static final String LEGACY_BATTLE_GEAR_PROFILE_SHA256 =
         "52e6bdb110102c9f4c7d168835c58bc9033381da3b4793c484795b4494df57a6";
+    private static final int LEGACY_WMMT_PROFILE_ID = 9012;
+    private static final String LEGACY_WMMT_PROFILE_LF_SHA256 =
+        "6d0d7c437d4db335d04c40ecca0e5c787785228a4542d03778f1b3d6d7627ba4";
+    private static final String LEGACY_WMMT_PROFILE_CRLF_SHA256 =
+        "9eb57b9918539ea8f780096ee3fbd1a717222778812e62f5ee882c89080bf4e4";
     private final Context context;
     private ArrayList<ControlsProfile> profiles;
     private int maxProfileId;
@@ -144,7 +149,10 @@ public class InputControlsManager {
         return (profileId == LEGACY_GUNDAM_PROFILE_ID &&
                 LEGACY_GUNDAM_PROFILE_SHA256.equals(targetSha256)) ||
             (profileId == LEGACY_BATTLE_GEAR_PROFILE_ID &&
-                LEGACY_BATTLE_GEAR_PROFILE_SHA256.equals(targetSha256));
+                LEGACY_BATTLE_GEAR_PROFILE_SHA256.equals(targetSha256)) ||
+            (profileId == LEGACY_WMMT_PROFILE_ID &&
+                (LEGACY_WMMT_PROFILE_LF_SHA256.equals(targetSha256) ||
+                 LEGACY_WMMT_PROFILE_CRLF_SHA256.equals(targetSha256)));
     }
 
     private String sha256(File file) throws IOException {
