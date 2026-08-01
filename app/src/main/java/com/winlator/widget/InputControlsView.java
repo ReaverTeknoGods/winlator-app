@@ -488,8 +488,19 @@ public class InputControlsView extends View {
     }
 
     public void handleInputEvent(Binding binding, boolean isActionDown, float offset) {
-        if (inputEventListener != null)
+        if (inputEventListener != null) {
             inputEventListener.onInputEvent(binding, isActionDown, offset);
+
+            // Prepared TeknoParrot sessions forward virtual controls to the
+            // host, which owns the cabinet/JVS/shared-page mapping. Injecting
+            // the same binding into Wine as raw XInput or keyboard input gives
+            // the guest two independent input paths. In racing games this can
+            // make VIEW also shift gears; in gun games START can also fire.
+            // The listener is installed only for an authenticated forwarded-
+            // input session, so ordinary Winlator containers keep their normal
+            // guest input behavior.
+            return;
+        }
 
         if (binding.isGamepad()) {
             WinHandler winHandler = xServer != null ? xServer.getWinHandler() : null;

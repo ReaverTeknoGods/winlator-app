@@ -1965,14 +1965,16 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 break;
             case GAMEPAD_BUTTON_L2:
                 if (preparedWindowsLaunch != null &&
-                    preparedWindowsLaunch.controlsProfileId == 9033)
+                    (preparedWindowsLaunch.controlsProfileId == 9033 ||
+                     preparedWindowsLaunch.controlsProfileId == 9076))
                     forwardedInputBridge.onVirtualButton(
                             ForwardedInputProtocol.BUTTON_7, isActionDown);
                 forwardedInputBridge.onVirtualAxis(4, isActionDown ? 1.0f : 0.0f);
                 break;
             case GAMEPAD_BUTTON_R2:
                 if (preparedWindowsLaunch != null &&
-                    preparedWindowsLaunch.controlsProfileId == 9033)
+                    (preparedWindowsLaunch.controlsProfileId == 9033 ||
+                     preparedWindowsLaunch.controlsProfileId == 9076))
                     forwardedInputBridge.onVirtualButton(
                             ForwardedInputProtocol.BUTTON_8, isActionDown);
                 forwardedInputBridge.onVirtualAxis(5, isActionDown ? 1.0f : 0.0f);
