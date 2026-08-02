@@ -134,7 +134,7 @@ public final class TeknoParrotGuestDiagnosticBackend {
             ContainerManager manager = new ContainerManager(context);
             Container container = findManagedContainer(manager, preferredContainerId);
             if (container == null)
-                container = createManagedContainer(manager);
+                container = createManagedContainer(context, manager);
             if (container == null)
                 throw new IOException("Winlator could not create the managed TeknoParrot container.");
 
@@ -174,7 +174,9 @@ public final class TeknoParrotGuestDiagnosticBackend {
         return null;
     }
 
-    private static Container createManagedContainer(ContainerManager manager) throws IOException {
+    private static Container createManagedContainer(
+        Context context,
+        ContainerManager manager) throws IOException {
         try {
             EnvVars envVars = new EnvVars(Container.DEFAULT_ENV_VARS);
             envVars.put("WINEESYNC", "1");
@@ -185,7 +187,7 @@ public final class TeknoParrotGuestDiagnosticBackend {
             data.put("cpuList", Container.getFallbackCPUList());
             data.put("cpuListWoW64", Container.getFallbackCPUList());
             data.put("wincomponents", Container.DEFAULT_WINCOMPONENTS);
-            data.put("drives", Container.TEKNOPARROT_MANAGED_DRIVES);
+            data.put("drives", buildManagedDrives(context));
             data.put("startupSelection", Container.STARTUP_SELECTION_ESSENTIAL);
             // Start the managed container with a compatibility-oriented preset.
             // Prepared OpenParrot launches select their title-specific runtime
@@ -212,12 +214,60 @@ public final class TeknoParrotGuestDiagnosticBackend {
         container.setEnvVars(envVars.toString());
         container.setCPUList(Container.getFallbackCPUList());
         container.setCPUListWoW64(Container.getFallbackCPUList());
-        container.setDrives(Container.TEKNOPARROT_MANAGED_DRIVES);
+        container.setDrives(buildManagedDrives(context));
         container.setStartupSelection(Container.STARTUP_SELECTION_ESSENTIAL);
         container.setBox64Preset(Box64Preset.CONSERVATIVE);
         container.putExtra(MANAGED_CONTAINER_MARKER, MANAGED_CONTAINER_TEMPLATE);
-        container.putExtra("teknoparrotEnvironmentVersion", 5);
+        container.putExtra("teknoparrotEnvironmentVersion", 6);
         container.saveData();
+    }
+
+    /**
+     * Exposes only the dedicated TeknoParrotGames directory on the first
+     * mounted removable volume. The SD-card root and unrelated user files are
+     * never mapped into Wine.
+     */
+    private static String buildManagedDrives(Context context) {
+        String drives = Container.TEKNOPARROT_MANAGED_DRIVES;
+        File gamesDirectory = findRemovableGamesDirectory(context);
+        return gamesDirectory == null
+            ? drives
+            : drives + "H:" + gamesDirectory.getPath();
+    }
+
+    private static File findRemovableGamesDirectory(Context context) {
+        File[] appDirectories = context.getExternalFilesDirs(null);
+        if (appDirectories == null)
+            return null;
+
+        final String marker = "/Android/data/" + context.getPackageName() + "/files";
+        final File primaryRoot = new File(AppUtils.TEKNOPARROT_GAMES_DIRECTORY)
+            .getParentFile();
+        for (File appDirectory : appDirectories) {
+            if (appDirectory == null)
+                continue;
+            try {
+                String appPath = appDirectory.getCanonicalPath();
+                if (!appPath.endsWith(marker))
+                    continue;
+                File volumeRoot = new File(
+                    appPath.substring(0, appPath.length() - marker.length()))
+                    .getCanonicalFile();
+                if (primaryRoot != null &&
+                    volumeRoot.equals(primaryRoot.getCanonicalFile()))
+                    continue;
+
+                File gamesDirectory = new File(volumeRoot, "TeknoParrotGames");
+                if (gamesDirectory.isDirectory() &&
+                    gamesDirectory.canRead() &&
+                    gamesDirectory.canWrite())
+                    return gamesDirectory;
+            }
+            catch (IOException ignored) {
+                // Ignore stale/unmounted volume entries and inspect the next one.
+            }
+        }
+        return null;
     }
 
     private static void ensureSharedGamesDirectory() throws IOException {
