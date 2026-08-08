@@ -377,6 +377,7 @@ public class WinHandler {
             catch (UnknownHostException ex) {}
         }
 
+        initReceived = false;
         running = true;
         startSendThread();
         Executors.newSingleThreadExecutor().execute(() -> {

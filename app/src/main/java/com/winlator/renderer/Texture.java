@@ -115,15 +115,22 @@ public class Texture {
     }
 
     public void updateFromDrawable() {
-        if (owner == null || owner.getData() == null) return;
+        // A drawable can be detached from its texture by the X server while
+        // the GL thread is rendering a frame. Keep one stable reference for
+        // the whole upload so setOwner(null) cannot invalidate later reads.
+        Drawable drawable = owner;
+        if (drawable == null) return;
 
-        ByteBuffer data = owner.getData();
+        ByteBuffer data = drawable.getData();
+        if (data == null) return;
         if (!isAllocated()) {
-            allocateTexture(owner.width, owner.height, data);
+            allocateTexture(drawable.width, drawable.height, data);
         }
         else if (needsUpdate) {
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureId);
-            GLES20.glTexSubImage2D(GLES20.GL_TEXTURE_2D, 0, 0, 0, owner.width, owner.height, format, GLES20.GL_UNSIGNED_BYTE, data);
+            GLES20.glTexSubImage2D(GLES20.GL_TEXTURE_2D, 0, 0, 0,
+                drawable.width, drawable.height, format,
+                GLES20.GL_UNSIGNED_BYTE, data);
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
             needsUpdate = false;
         }

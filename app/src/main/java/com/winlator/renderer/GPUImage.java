@@ -44,7 +44,10 @@ public class GPUImage extends Texture {
 
     @Override
     public void updateFromDrawable() {
-        if (!isAllocated() && owner != null) allocateTexture(owner.width, owner.height, null);
+        Drawable drawable = owner;
+        if (!isAllocated() && drawable != null) {
+            allocateTexture(drawable.width, drawable.height, null);
+        }
         needsUpdate = false;
     }
 
