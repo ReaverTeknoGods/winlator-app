@@ -136,7 +136,8 @@ final class ActivityLaunchContract {
         }
         else if (WINDOWS_EXECUTABLE.equals(launchKind)) {
             boolean hasScopedGameDirectory = source.has(SCOPED_GAME_DIRECTORY);
-            if (source.length() != (hasScopedGameDirectory ? 17 : 16) ||
+            if ((source.length() != 16 && source.length() != 17) ||
+                (hasScopedGameDirectory != (source.length() == 17)) ||
                 !source.has(EXECUTABLE) ||
                 !source.has(WORKING_DIRECTORY) ||
                 !source.has(ARGUMENTS) ||
@@ -170,12 +171,16 @@ final class ActivityLaunchContract {
             profileConfigIni = requireProfileConfigIni(source);
             if (hasScopedGameDirectory)
                 scopedGameDirectory = requireScopedGameDirectory(source);
-            boolean usesScopedGameDrive = usesDosDrive(executable, 'I') ||
-                usesDosDrive(workingDirectory, 'I') || usesDosDrive(libraryDirectory, 'I') ||
-                usesDosDrive(arguments, 'I');
+            boolean usesScopedGameDrive = false;
+            for (String argument : arguments) {
+                if (argument.toUpperCase(Locale.ROOT).startsWith("I:\\")) {
+                    usesScopedGameDrive = true;
+                    break;
+                }
+            }
             if (usesScopedGameDrive != !scopedGameDirectory.isEmpty())
                 throw new IllegalArgumentException(
-                    "An I: launch path and a scoped Android game folder are required together.");
+                    "The scoped Android game folder and I: game argument do not match.");
         }
         else {
             throw new IllegalArgumentException("The Activity launch kind is not implemented.");
@@ -346,6 +351,50 @@ final class ActivityLaunchContract {
         return value;
     }
 
+    private static String requireScopedGameDirectory(JSONObject source) {
+        Object raw = source.opt(SCOPED_GAME_DIRECTORY);
+        if (!(raw instanceof String))
+            throw new IllegalArgumentException(
+                "Invalid Activity launch field: " + SCOPED_GAME_DIRECTORY);
+        String value = (String)raw;
+        if (value.isEmpty() || value.length() > 1024 || value.indexOf('\\') >= 0 ||
+            value.indexOf('"') >= 0 || value.endsWith("/") || value.contains("//") ||
+            value.contains("/./") || value.contains("/../") || value.endsWith("/.") ||
+            value.endsWith("/.."))
+            throw new IllegalArgumentException("The scoped Android game folder is invalid.");
+
+        boolean primary = value.startsWith("/storage/emulated/0/");
+        boolean removable = false;
+        if (!primary && value.startsWith("/storage/")) {
+            int volumeEnd = value.indexOf('/', "/storage/".length());
+            if (volumeEnd > 0) {
+                String volume = value.substring("/storage/".length(), volumeEnd);
+                removable = !"emulated".equalsIgnoreCase(volume) &&
+                    !"self".equalsIgnoreCase(volume) &&
+                    volume.matches("[A-Za-z0-9_-]+");
+            }
+        }
+        if (!primary && !removable)
+            throw new IllegalArgumentException(
+                "The scoped game folder is not on Android shared storage.");
+        String lower = value.toLowerCase(Locale.ROOT);
+        if (lower.matches("^/storage/[^/]+/android$") ||
+            lower.matches("^/storage/[^/]+/android/(data|obb)(/.*)?$") ||
+            lower.equals("/storage/emulated/0/android") ||
+            lower.equals("/storage/emulated/0/android/data") ||
+            lower.startsWith("/storage/emulated/0/android/data/") ||
+            lower.equals("/storage/emulated/0/android/obb") ||
+            lower.startsWith("/storage/emulated/0/android/obb/"))
+            throw new IllegalArgumentException(
+                "Protected Android application storage cannot be a scoped game folder.");
+        for (int index = 0; index < value.length(); index++) {
+            if (value.charAt(index) < 0x20)
+                throw new IllegalArgumentException(
+                    "The scoped Android game folder contains a control character.");
+        }
+        return value;
+    }
+
     private static String requireString(JSONObject source, String key, int exactOrMaximumLength) {
         Object raw = source.opt(key);
         if (!(raw instanceof String))
@@ -358,8 +407,7 @@ final class ActivityLaunchContract {
 
     private static String requireDosPath(JSONObject source, String key, boolean directory) {
         String value = requireString(source, key, 512);
-        if ((!value.matches("(?i)^[CDEGH]:\\\\[^/\"]+$") &&
-             !value.matches("(?i)^I:\\\\[^/\"]+$")) ||
+        if (!value.matches("(?i)^[CDEGH]:\\\\[^/\"]+$") ||
             value.endsWith("\\") ||
             value.contains("\\.\\") ||
             value.contains("\\..\\") ||
@@ -396,54 +444,6 @@ final class ActivityLaunchContract {
             result[index] = value;
         }
         return result;
-    }
-
-    private static boolean usesDosDrive(String value, char letter) {
-        return value != null && value.length() >= 3 &&
-            Character.toUpperCase(value.charAt(0)) == letter &&
-            value.charAt(1) == ':' && value.charAt(2) == '\\';
-    }
-
-    private static boolean usesDosDrive(String[] values, char letter) {
-        if (values == null) return false;
-        for (String value : values) {
-            if (usesDosDrive(value, letter)) return true;
-        }
-        return false;
-    }
-
-    private static String requireScopedGameDirectory(JSONObject source) {
-        Object raw = source.opt(SCOPED_GAME_DIRECTORY);
-        if (!(raw instanceof String))
-            throw new IllegalArgumentException(
-                "Invalid Activity launch field: " + SCOPED_GAME_DIRECTORY);
-        String value = (String)raw;
-        if (value.trim().isEmpty() || value.length() > 1024 ||
-            value.indexOf('\\') >= 0 || value.indexOf('\"') >= 0 || value.endsWith("/"))
-            throw new IllegalArgumentException("A canonical Android game folder is required.");
-
-        String lower = value.toLowerCase(Locale.ROOT);
-        boolean primary = value.startsWith("/storage/emulated/0/");
-        boolean removable = value.matches("^/storage/[A-Za-z0-9_-]+/.+") &&
-            !lower.startsWith("/storage/emulated/") &&
-            !lower.startsWith("/storage/self/");
-        if (!primary && !removable)
-            throw new IllegalArgumentException("The game folder is outside shared storage.");
-        if (lower.equals("/storage/emulated/0/android") ||
-            lower.startsWith("/storage/emulated/0/android/data") ||
-            lower.startsWith("/storage/emulated/0/android/obb") ||
-            lower.matches("^/storage/[^/]+/android$") ||
-            lower.matches("^/storage/[^/]+/android/(data|obb)(/.*)?$"))
-            throw new IllegalArgumentException("Protected Android storage cannot be exposed.");
-        for (String segment : value.split("/")) {
-            if (segment.equals(".") || segment.equals(".."))
-                throw new IllegalArgumentException("The game folder contains traversal.");
-            for (int index = 0; index < segment.length(); index++) {
-                if (segment.charAt(index) < 0x20)
-                    throw new IllegalArgumentException("The game folder contains a control character.");
-            }
-        }
-        return value;
     }
 
     static final class Request {

@@ -33,7 +33,9 @@ import java.util.ArrayList;
 
 public class LogView extends View {
     private static final int MAX_VISIBLE_LINES = 4096;
-    private static final int TRIM_VISIBLE_LINES = 1024;
+    private static final int TRIM_VISIBLE_LINES = 512;
+    private static final int MAX_VISIBLE_LINE_CHARACTERS = 2048;
+    private static final long REFRESH_INTERVAL_MS = 100;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final ArrayList<String> lines = new ArrayList<>();
     private final float rowHeight = UnitUtils.dpToPx(30);
@@ -45,9 +47,9 @@ public class LogView extends View {
     private boolean isActionDown = false;
     private boolean scrollingHorizontally = false;
     private boolean scrollingVertically = false;
+    private boolean refreshPending = false;
     private final Object lock = new Object();
     private final PrintStream printStream;
-    private boolean refreshPending;
 
     public LogView(Context context) {
         this(context, null);
@@ -85,7 +87,9 @@ public class LogView extends View {
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         super.onSizeChanged(w, h, oldw, oldh);
-        computeScrollSize();
+        synchronized (lock) {
+            computeScrollSize();
+        }
     }
 
     @Override
@@ -208,7 +212,10 @@ public class LogView extends View {
 
     public void append(String line) {
         synchronized (lock) {
-            String content = line.replace("\n", "");
+            String content = line.length() > MAX_VISIBLE_LINE_CHARACTERS
+                ? line.substring(0, MAX_VISIBLE_LINE_CHARACTERS) + " …[truncated]"
+                : line;
+            content = content.replace("\n", "").replace("\r", "");
             if (content.isEmpty()) return;
             String logLine = "["+DateFormat.format("HH:mm:ss", System.currentTimeMillis())+"]  "+content;
             lines.add(logLine);
@@ -230,13 +237,13 @@ public class LogView extends View {
             if (refreshPending) return;
             refreshPending = true;
         }
-        post(() -> {
+        postDelayed(() -> {
             synchronized (lock) {
-                refreshPending = false;
                 computeScrollSize();
+                refreshPending = false;
             }
             invalidate();
-        });
+        }, REFRESH_INTERVAL_MS);
     }
 
     public static File getLogFile() {

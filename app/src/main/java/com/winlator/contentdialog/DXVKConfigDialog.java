@@ -100,6 +100,9 @@ public class DXVKConfigDialog extends ContentDialog {
             content += "d3d9.maxFrameRate = "+framerate+"\n";
         }
 
+        if ("false".equalsIgnoreCase(config.get("countLosableResources")))
+            content += "d3d9.countLosableResources = False\n";
+
         String customDevice = config.get("customDevice");
         if (customDevice.contains(":")) {
             String[] parts = customDevice.split(":");

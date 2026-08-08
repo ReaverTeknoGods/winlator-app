@@ -135,20 +135,27 @@ public class Win32AppWorkarounds {
             applyWorkaround((EnvVarsWorkaround) (envVars) ->
                 envVars.put("WINEDLLOVERRIDES", "quartz=b"));
         }
-        else if (compatibilityPreset.equals("wine-gstreamer") ||
-                 compatibilityPreset.equals("kof-xii-wine-gstreamer")) {
+        else if (compatibilityPreset.equals("wine-gstreamer")) {
             applyWineGStreamerWorkaround();
         }
-        else if (compatibilityPreset.equals("gaia-attack4-media")) {
-            // Gaia Attack 4 mixes WMV3 and Indeo 5 AVI files. Keep both
-            // codecs on the prefix-local Wine-GStreamer path.
+        else if (compatibilityPreset.equals("kof-xii-wine-gstreamer")) {
             applyWineGStreamerWorkaround();
         }
         else if (compatibilityPreset.equals("kof-mira-builtin-wined3d")) {
-            // Regulation A ships local WineD3D/DirectDraw wrappers that do not
-            // match this prefix. Prefer the Wine builtins without mutating the dump.
+            // Some redistributed MIRA folders contain WineD3D 5.3's d3d8,
+            // d3d9 and DirectDraw wrappers beside game.exe. Native DLL search
+            // precedence loads those old OpenGL wrappers instead of Wine
+            // 10.10's maintained built-ins. Force only these renderer entry
+            // points to built-in WineD3D; do not rename or delete anything in
+            // the user's dump.
             applyWorkaround((EnvVarsWorkaround) (envVars) ->
                 envVars.put("WINEDLLOVERRIDES", "d3d8,d3d9,ddraw=b"));
+        }
+        else if (compatibilityPreset.equals("gaia-attack4-media")) {
+            // Gaia Attack 4 mixes WMV3 and Indeo 5 AVI files in one title.
+            // Keep every movie on Wine's DirectShow/GStreamer path so the
+            // bundled libav plugin can decode both codecs consistently.
+            applyWineGStreamerWorkaround();
         }
         else if (compatibilityPreset.equals("post-start-remote-thread")) {
             // Guilty Gear Xrd REV2 APM3 reaches its startup movie immediately

@@ -70,6 +70,7 @@ import com.winlator.core.WineInstaller;
 import com.winlator.core.WineRegistryEditor;
 import com.winlator.core.WineStartMenuCreator;
 import com.winlator.core.WineThemeManager;
+import com.winlator.core.Wow64CpuUnixTransitionPatch;
 import com.winlator.core.WineUtils;
 import com.winlator.inputcontrols.Binding;
 import com.winlator.inputcontrols.ControlsProfile;
@@ -184,7 +185,6 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private volatile boolean cxbxrProcessMonitorStarted;
     private volatile boolean preparedGameProcessMonitorStarted;
     private volatile boolean preparedGameStartupMonitorStarted;
-    private boolean preparedWineGStreamerOutputFormatPatched;
     private File preparedApmPayloadFile;
 
     @Override
@@ -340,7 +340,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                         preparedWindowsLaunch.arguments);
                     win32AppWorkarounds.applyTeknoParrotCompatibilityPreset(
                         preparedWindowsLaunch.compatibilityPreset);
-                    if (!ensurePreparedWineGStreamerOutputFormat() ||
+                    if (!ensurePreparedWow64Transition() ||
+                        !ensurePreparedWineGStreamerOutputFormat() ||
                         !prepareTeknoParrotCompatibilityPayload()) {
                         finish();
                         return;
@@ -559,7 +560,6 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     @Override
     protected void onDestroy() {
         prepareManagedSessionGraphicsTeardown();
-        restorePreparedWineGStreamerOutputFormat();
         clearPreparedApmPayload();
         if (container != null) container.clearTransientDrives();
         synchronized (TEKNOPARROT_SESSION_LOCK) {
@@ -614,32 +614,103 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         }
     }
 
-    private File getPreparedWineGStreamerDll() {
-        return new File(
-            rootFS.getRootDir(),
-            RootFS.WINEPREFIX + "/drive_c/windows/syswow64/winegstreamer.dll");
+    private boolean isJusticeLeagueWow64TransitionPreparedLaunch() {
+        if (preparedWindowsLaunch == null ||
+            !"justice-league-wow64-transition".equals(
+                preparedWindowsLaunch.compatibilityPreset))
+            return false;
+        String gameExecutable = findPreparedGameExecutable();
+        return gameExecutable != null && gameExecutable.replace('/', '\\')
+            .toLowerCase(java.util.Locale.ROOT)
+            .endsWith("\\jla.exe");
+    }
+
+    private boolean usesPreparedWow64TransitionRecovery() {
+        return isMarioKartDxPreparedLaunch() ||
+            isJusticeLeagueWow64TransitionPreparedLaunch() ||
+            isFnfDriftWow64TransitionPreparedLaunch();
+    }
+
+    /**
+     * Keep the Wine installation immutable and patch only the prefix-local
+     * Wine 10.10 WOW64 thunk while an exact affected title is prepared. A
+     * later launch of any other title restores the original bytes.
+     */
+    private boolean ensurePreparedWow64Transition() {
+        boolean enabled = usesPreparedWow64TransitionRecovery();
+        File rootDir = rootFS.getRootDir();
+        File wineDir = new File(rootDir, rootFS.getWinePath());
+        File immutableWineDll = new File(
+            wineDir, "lib/wine/x86_64-windows/wow64cpu.dll");
+        File prefixDll = new File(
+            rootDir, RootFS.WINEPREFIX + "/drive_c/windows/system32/wow64cpu.dll");
+        try {
+            Wow64CpuUnixTransitionPatch.Result result =
+                Wow64CpuUnixTransitionPatch.configure(
+                    immutableWineDll, prefixDll, enabled);
+            if (enabled && result == Wow64CpuUnixTransitionPatch.Result.UNSUPPORTED) {
+                Log.e(TAG,
+                    "WOW64 transition recovery refused an unknown Wine binary at " +
+                    immutableWineDll.getAbsolutePath() + " (" +
+                    Wow64CpuUnixTransitionPatch.fingerprint(immutableWineDll) +
+                    "); prefix=" +
+                    Wow64CpuUnixTransitionPatch.fingerprint(prefixDll) +
+                    "; " + Wow64CpuUnixTransitionPatch.differenceSummary(
+                        immutableWineDll, prefixDll));
+                return false;
+            }
+            if (result == Wow64CpuUnixTransitionPatch.Result.APPLIED ||
+                result == Wow64CpuUnixTransitionPatch.Result.RESTORED ||
+                (enabled && preparedWindowsLaunch.debugLoggingEnabled))
+                Log.i(TAG, "Prepared WOW64 transition state: " + result);
+            return true;
+        }
+        catch (Exception error) {
+            Log.e(TAG,
+                "Could not configure the prepared WOW64 transition recovery.",
+                error);
+            return !enabled;
+        }
     }
 
     private boolean ensurePreparedWineGStreamerOutputFormat() {
-        if (preparedWindowsLaunch == null) return true;
-        File prefixDll = getPreparedWineGStreamerDll();
-        if (!"kof-xii-wine-gstreamer".equals(
-                preparedWindowsLaunch.compatibilityPreset)) {
-            WineGStreamerOutputFormatPatch.restore(prefixDll);
+        boolean enabled = preparedWindowsLaunch != null &&
+            "kof-xii-wine-gstreamer".equals(
+                preparedWindowsLaunch.compatibilityPreset);
+        File rootDir = rootFS.getRootDir();
+        File wineDir = new File(rootDir, rootFS.getWinePath());
+        File immutableWineDll = new File(
+            wineDir, "lib/wine/i386-windows/winegstreamer.dll");
+        File prefixDll = new File(
+            rootDir,
+            RootFS.WINEPREFIX + "/drive_c/windows/syswow64/winegstreamer.dll");
+        try {
+            WineGStreamerOutputFormatPatch.Result result =
+                WineGStreamerOutputFormatPatch.configure(
+                    immutableWineDll, prefixDll, enabled);
+            if (enabled &&
+                result == WineGStreamerOutputFormatPatch.Result.UNSUPPORTED) {
+                Log.e(TAG,
+                    "KOF XII Wine-GStreamer recovery refused an unknown binary: " +
+                    "immutable=" +
+                    WineGStreamerOutputFormatPatch.fingerprint(immutableWineDll) +
+                    "; prefix=" +
+                    WineGStreamerOutputFormatPatch.fingerprint(prefixDll));
+                return false;
+            }
+            if (result == WineGStreamerOutputFormatPatch.Result.APPLIED ||
+                result == WineGStreamerOutputFormatPatch.Result.RESTORED ||
+                (enabled && preparedWindowsLaunch.debugLoggingEnabled))
+                Log.i(TAG,
+                    "Prepared KOF XII Wine-GStreamer format state: " + result);
             return true;
         }
-        preparedWineGStreamerOutputFormatPatched =
-            WineGStreamerOutputFormatPatch.apply(prefixDll);
-        if (!preparedWineGStreamerOutputFormatPatched)
-            Log.e(TAG, "The KOF XII Wine-GStreamer DLL did not match the guarded build.");
-        return preparedWineGStreamerOutputFormatPatched;
-    }
-
-    private void restorePreparedWineGStreamerOutputFormat() {
-        if (!preparedWineGStreamerOutputFormatPatched || rootFS == null) return;
-        if (!WineGStreamerOutputFormatPatch.restore(getPreparedWineGStreamerDll()))
-            Log.e(TAG, "Could not restore the prefix-local Wine-GStreamer format order.");
-        preparedWineGStreamerOutputFormatPatched = false;
+        catch (Exception error) {
+            Log.e(TAG,
+                "Could not configure the KOF XII Wine-GStreamer recovery.",
+                error);
+            return !enabled;
+        }
     }
 
     /**

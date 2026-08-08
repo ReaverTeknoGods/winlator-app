@@ -75,7 +75,7 @@ final class SessionContract {
             result.put(FEATURE_FLAGS_KEY, FEATURE_FLAGS);
             result.put(MAXIMUM_PAGE_BYTES, BridgeProtocol.PAGE_SIZE);
             result.put(MAXIMUM_PIPE_NAME_BYTES, BridgeProtocol.MAX_PIPE_NAME_BYTES);
-            result.put(IMPLEMENTATION, "Winlator 11.1 TeknoParrot companion (protocol 12)");
+            result.put(IMPLEMENTATION, "Winlator 11.1 TeknoParrot companion (protocol 13)");
             return encode(result);
         }
         catch (JSONException error) {

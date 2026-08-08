@@ -27,7 +27,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
 
 public abstract class RootFSInstaller {
-    public static final byte LATEST_VERSION = 21; // TODO increment it on rootfs update
+    // Version 22 forces existing installations to unpack the current rootfs.
+    // Its GStreamer libav plugin includes the Indeo 4/5 decoders that were
+    // absent from some already-installed version-21 root filesystems.
+    public static final byte LATEST_VERSION = 22;
     public static final byte UPDATE_WINEPREFIX_VERSION = 16; // set it if main wine version change
     public static final String FILENAME = "rootfs.tzst";
 

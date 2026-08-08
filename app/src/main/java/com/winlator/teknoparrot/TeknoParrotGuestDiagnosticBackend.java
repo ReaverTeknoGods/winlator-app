@@ -260,8 +260,10 @@ public final class TeknoParrotGuestDiagnosticBackend {
                 File gamesDirectory = new File(volumeRoot, "TeknoParrotGames");
                 if (gamesDirectory.isDirectory() &&
                     gamesDirectory.canRead() &&
-                    gamesDirectory.canWrite())
+                    gamesDirectory.canWrite()) {
+                    ensureNoMediaMarker(gamesDirectory);
                     return gamesDirectory;
+                }
             }
             catch (IOException ignored) {
                 // Ignore stale/unmounted volume entries and inspect the next one.
@@ -277,9 +279,22 @@ public final class TeknoParrotGuestDiagnosticBackend {
             !gamesDirectory.canWrite())
             throw new IOException(
                 "Winlator cannot access the shared TeknoParrotGames directory.");
-        File noMediaMarker = new File(gamesDirectory, ".nomedia");
-        if (!noMediaMarker.isFile() && !noMediaMarker.createNewFile())
-            throw new IOException("Winlator cannot suppress media scanning for the game library.");
+        ensureNoMediaMarker(gamesDirectory);
+    }
+
+    private static void ensureNoMediaMarker(File gamesDirectory) {
+        // Arcade dumps commonly contain AVI/WMV attract and level movies.
+        // Keep Android's media scanner from publishing those assets in the
+        // user's Gallery while leaving the game directory fully accessible.
+        File marker = new File(gamesDirectory, ".nomedia");
+        if (marker.isFile())
+            return;
+        try {
+            marker.createNewFile();
+        }
+        catch (IOException ignored) {
+            // Media-index suppression must never prevent a game launch.
+        }
     }
 
     private static boolean isContainerActive(RootFS rootFS, int containerId) {
