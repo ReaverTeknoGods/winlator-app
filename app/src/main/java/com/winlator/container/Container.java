@@ -43,6 +43,7 @@ public class Container {
     private String wincomponents = DEFAULT_WINCOMPONENTS;
     private String audioDriver = DEFAULT_AUDIO_DRIVER;
     private String drives = DEFAULT_DRIVES;
+    private String transientDrives = "";
     private String wineVersion = WineInfo.MAIN_WINE_INFO.identifier();
     private byte hudMode = (byte)FrameRating.Mode.DISABLED.ordinal();
     private byte startupSelection = STARTUP_SELECTION_ESSENTIAL;
@@ -140,11 +141,28 @@ public class Container {
     }
 
     public String getDrives() {
-        return drives;
+        return drives + transientDrives;
     }
 
     public void setDrives(String drives) {
         this.drives = drives;
+    }
+
+    public void setTransientDrive(String letter, String path) {
+        if (letter == null || !letter.matches("(?i)^[A-Z]$") ||
+            path == null || path.isEmpty() || path.indexOf(':') >= 0)
+            throw new IllegalArgumentException("A drive letter and local path are required.");
+        String normalizedLetter = letter.toUpperCase(java.util.Locale.ROOT);
+        StringBuilder result = new StringBuilder();
+        for (Drive drive : drivesIterator(transientDrives)) {
+            if (!drive.letter.equalsIgnoreCase(normalizedLetter))
+                result.append(drive.letter).append(':').append(drive.path);
+        }
+        transientDrives = result.append(normalizedLetter).append(':').append(path).toString();
+    }
+
+    public void clearTransientDrives() {
+        transientDrives = "";
     }
 
     public byte getHUDMode() {
@@ -264,7 +282,7 @@ public class Container {
     }
 
     public Iterable<Drive> drivesIterator() {
-        return drivesIterator(drives);
+        return drivesIterator(getDrives());
     }
 
     public static Iterable<Drive> drivesIterator(final String drives) {

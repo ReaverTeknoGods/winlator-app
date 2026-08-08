@@ -32,6 +32,7 @@ public final class PreparedWindowsLaunchRegistry {
             request.compatibilityPreset,
             request.displayMode,
             request.profileConfigIni,
+            request.scopedGameDirectory,
             prepared.flags == SessionContract.SESSION_FLAG_PRODUCTION,
             prepared.pipePort,
             prepared.sessionId,
@@ -61,6 +62,7 @@ public final class PreparedWindowsLaunchRegistry {
             launch.compatibilityPreset,
             launch.displayMode,
             launch.profileConfigIni,
+            launch.scopedGameDirectory,
             launch.productionBridge,
             launch.pipePort,
             launch.sessionId,
@@ -83,6 +85,7 @@ public final class PreparedWindowsLaunchRegistry {
         public final String compatibilityPreset;
         public final String displayMode;
         public final String profileConfigIni;
+        public final String scopedGameDirectory;
         public final boolean productionBridge;
         public final int pipePort;
         public final String sessionId;
@@ -104,6 +107,7 @@ public final class PreparedWindowsLaunchRegistry {
                 String compatibilityPreset,
                 String displayMode,
                 String profileConfigIni,
+                String scopedGameDirectory,
                 boolean productionBridge,
                 int pipePort,
                 String sessionId,
@@ -123,6 +127,7 @@ public final class PreparedWindowsLaunchRegistry {
             this.compatibilityPreset = compatibilityPreset;
             this.displayMode = displayMode;
             this.profileConfigIni = profileConfigIni;
+            this.scopedGameDirectory = scopedGameDirectory;
             this.productionBridge = productionBridge;
             this.pipePort = pipePort;
             this.sessionId = sessionId;

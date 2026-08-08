@@ -65,6 +65,7 @@ import com.winlator.core.StringUtils;
 import com.winlator.core.TarCompressorUtils;
 import com.winlator.core.Win32AppWorkarounds;
 import com.winlator.core.WineInfo;
+import com.winlator.core.WineGStreamerOutputFormatPatch;
 import com.winlator.core.WineInstaller;
 import com.winlator.core.WineRegistryEditor;
 import com.winlator.core.WineStartMenuCreator;
@@ -182,6 +183,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private WifiManager.MulticastLock wmmtTerminalMulticastLock;
     private volatile boolean cxbxrProcessMonitorStarted;
     private volatile boolean preparedGameProcessMonitorStarted;
+    private boolean preparedWineGStreamerOutputFormatPatched;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -249,7 +251,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         if (!isGenerateWineprefix()) {
             ContainerManager containerManager = new ContainerManager(this);
             container = containerManager.getContainerById(getIntent().getIntExtra("container_id", 0));
-            if (container == null || !validatePreparedWindowsLaunch()) {
+            if (container == null || !applyPreparedScopedGameDirectory() ||
+                !validatePreparedWindowsLaunch()) {
                 finish();
                 return;
             }
@@ -335,7 +338,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                         preparedWindowsLaunch.arguments);
                     win32AppWorkarounds.applyTeknoParrotCompatibilityPreset(
                         preparedWindowsLaunch.compatibilityPreset);
-                    if (!prepareTeknoParrotCompatibilityPayload()) {
+                    if (!ensurePreparedWineGStreamerOutputFormat() ||
+                        !prepareTeknoParrotCompatibilityPayload()) {
                         finish();
                         return;
                     }
@@ -553,6 +557,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     @Override
     protected void onDestroy() {
         prepareManagedSessionGraphicsTeardown();
+        restorePreparedWineGStreamerOutputFormat();
+        if (container != null) container.clearTransientDrives();
         synchronized (TEKNOPARROT_SESSION_LOCK) {
             if (teknoParrotSessionActivity.get() == this)
                 teknoParrotSessionActivity.clear();
@@ -570,6 +576,67 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         releasePreparedMulticastLock();
         ProcessHelper.setOutputSuppressed(false);
         super.onDestroy();
+    }
+
+    private boolean applyPreparedScopedGameDirectory() {
+        if (preparedWindowsLaunch == null ||
+            preparedWindowsLaunch.scopedGameDirectory == null ||
+            preparedWindowsLaunch.scopedGameDirectory.isEmpty())
+            return true;
+        try {
+            File candidate = new File(preparedWindowsLaunch.scopedGameDirectory)
+                .getCanonicalFile();
+            String path = candidate.getPath();
+            String lower = path.replace('\\', '/').toLowerCase(java.util.Locale.ROOT);
+            boolean primary = lower.startsWith("/storage/emulated/0/");
+            boolean removable = lower.matches("^/storage/[a-z0-9_-]+/.+") &&
+                !lower.startsWith("/storage/emulated/") &&
+                !lower.startsWith("/storage/self/");
+            if ((!primary && !removable) ||
+                lower.equals("/storage/emulated/0/android") ||
+                lower.startsWith("/storage/emulated/0/android/data") ||
+                lower.startsWith("/storage/emulated/0/android/obb") ||
+                lower.matches("^/storage/[^/]+/android$") ||
+                lower.matches("^/storage/[^/]+/android/(data|obb)(/.*)?$") ||
+                !candidate.isDirectory() || !candidate.canRead()) {
+                Log.e(TAG, "Rejected the prepared scoped Android game folder.");
+                return false;
+            }
+            container.setTransientDrive("I", path);
+            return true;
+        }
+        catch (IOException | SecurityException error) {
+            Log.e(TAG, "Could not expose the prepared scoped Android game folder.", error);
+            return false;
+        }
+    }
+
+    private File getPreparedWineGStreamerDll() {
+        return new File(
+            rootFS.getRootDir(),
+            RootFS.WINEPREFIX + "/drive_c/windows/syswow64/winegstreamer.dll");
+    }
+
+    private boolean ensurePreparedWineGStreamerOutputFormat() {
+        if (preparedWindowsLaunch == null) return true;
+        File prefixDll = getPreparedWineGStreamerDll();
+        if (!"kof-xii-wine-gstreamer".equals(
+                preparedWindowsLaunch.compatibilityPreset)) {
+            WineGStreamerOutputFormatPatch.restore(prefixDll);
+            return true;
+        }
+        preparedWineGStreamerOutputFormatPatched =
+            WineGStreamerOutputFormatPatch.apply(prefixDll);
+        if (!preparedWineGStreamerOutputFormatPatched)
+            Log.e(TAG, "The KOF XII Wine-GStreamer DLL did not match the guarded build.");
+        return preparedWineGStreamerOutputFormatPatched;
+    }
+
+    private void restorePreparedWineGStreamerOutputFormat() {
+        if (!preparedWineGStreamerOutputFormatPatched || rootFS == null) return;
+        if (!WineGStreamerOutputFormatPatch.restore(getPreparedWineGStreamerDll()))
+            Log.e(TAG, "Could not restore the prefix-local Wine-GStreamer format order.");
+        preparedWineGStreamerOutputFormatPatched = false;
     }
 
     /**
@@ -2038,6 +2105,9 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         GLRenderer renderer = xServerView.getRenderer();
         boolean usesDirectCabinetTouch = preparedWindowsLaunch != null &&
             ("shared-jvs-dual-io".equals(preparedWindowsLaunch.compatibilityPreset) ||
+             "gaia-attack4-media".equals(preparedWindowsLaunch.compatibilityPreset) ||
+             "music-gungun-native-fullscreen".equals(
+                 preparedWindowsLaunch.compatibilityPreset) ||
              "direct-touch-jvs".equals(preparedWindowsLaunch.compatibilityPreset));
         if (usesDirectCabinetTouch) {
             // Wonderland Wars and Shining Force Cross read title-specific
@@ -2821,6 +2891,11 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         // motion even with diagnostics disabled.
         if (preparedWindowsLaunch != null &&
             isWmmtCompatibilityPreset(preparedWindowsLaunch.compatibilityPreset))
+            return Box64Preset.PERFORMANCE;
+
+        if (preparedWindowsLaunch != null &&
+            "battle-gear-4-original".equals(
+                preparedWindowsLaunch.compatibilityPreset))
             return Box64Preset.PERFORMANCE;
 
         // CXBXR translates the emulated Xbox CPU and D3D8 workload inside a
@@ -3825,12 +3900,14 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             // a healthy 60 FPS stream of black frames.  Keep this title's
             // container display centered, but request native fullscreen in the
             // guest INI.
-            boolean useNativeEnEinsFullscreen =
+            boolean useNativeGuestFullscreen =
                 "en-eins-native-fullscreen".equals(
+                    preparedWindowsLaunch.compatibilityPreset) ||
+                "music-gungun-native-fullscreen".equals(
                     preparedWindowsLaunch.compatibilityPreset);
             String windowedValue =
                 ("fullscreen".equals(preparedWindowsLaunch.displayMode) ||
-                 useNativeEnEinsFullscreen) ? "0" : "1";
+                 useNativeGuestFullscreen) ? "0" : "1";
             List<String> result = new ArrayList<>(
                 source.size() + (applyResolution ? 5 : 3) +
                     (applyWmmtNetwork ? 5 : 0) + (applyStarWarsDisplay ? 1 : 0) +

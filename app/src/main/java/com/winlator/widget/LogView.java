@@ -32,6 +32,8 @@ import java.io.PrintStream;
 import java.util.ArrayList;
 
 public class LogView extends View {
+    private static final int MAX_VISIBLE_LINES = 4096;
+    private static final int TRIM_VISIBLE_LINES = 1024;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final ArrayList<String> lines = new ArrayList<>();
     private final float rowHeight = UnitUtils.dpToPx(30);
@@ -45,6 +47,7 @@ public class LogView extends View {
     private boolean scrollingVertically = false;
     private final Object lock = new Object();
     private final PrintStream printStream;
+    private boolean refreshPending;
 
     public LogView(Context context) {
         this(context, null);
@@ -200,7 +203,7 @@ public class LogView extends View {
         synchronized (lock) {
             lines.clear();
         }
-        postInvalidate();
+        scheduleRefresh();
     }
 
     public void append(String line) {
@@ -209,16 +212,31 @@ public class LogView extends View {
             if (content.isEmpty()) return;
             String logLine = "["+DateFormat.format("HH:mm:ss", System.currentTimeMillis())+"]  "+content;
             lines.add(logLine);
+            if (lines.size() > MAX_VISIBLE_LINES)
+                lines.subList(0, TRIM_VISIBLE_LINES).clear();
 
             if (printStream != null) {
                 printStream.append(logLine+"\n");
                 printStream.flush();
             }
-            computeScrollSize();
         }
-        postInvalidate();
+        scheduleRefresh();
 
         if (MainActivity.DEBUG_MODE) System.out.println(line);
+    }
+
+    private void scheduleRefresh() {
+        synchronized (lock) {
+            if (refreshPending) return;
+            refreshPending = true;
+        }
+        post(() -> {
+            synchronized (lock) {
+                refreshPending = false;
+                computeScrollSize();
+            }
+            invalidate();
+        });
     }
 
     public static File getLogFile() {

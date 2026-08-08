@@ -135,8 +135,20 @@ public class Win32AppWorkarounds {
             applyWorkaround((EnvVarsWorkaround) (envVars) ->
                 envVars.put("WINEDLLOVERRIDES", "quartz=b"));
         }
-        else if (compatibilityPreset.equals("wine-gstreamer")) {
+        else if (compatibilityPreset.equals("wine-gstreamer") ||
+                 compatibilityPreset.equals("kof-xii-wine-gstreamer")) {
             applyWineGStreamerWorkaround();
+        }
+        else if (compatibilityPreset.equals("gaia-attack4-media")) {
+            // Gaia Attack 4 mixes WMV3 and Indeo 5 AVI files. Keep both
+            // codecs on the prefix-local Wine-GStreamer path.
+            applyWineGStreamerWorkaround();
+        }
+        else if (compatibilityPreset.equals("kof-mira-builtin-wined3d")) {
+            // Regulation A ships local WineD3D/DirectDraw wrappers that do not
+            // match this prefix. Prefer the Wine builtins without mutating the dump.
+            applyWorkaround((EnvVarsWorkaround) (envVars) ->
+                envVars.put("WINEDLLOVERRIDES", "d3d8,d3d9,ddraw=b"));
         }
         else if (compatibilityPreset.equals("post-start-remote-thread")) {
             // Guilty Gear Xrd REV2 APM3 reaches its startup movie immediately

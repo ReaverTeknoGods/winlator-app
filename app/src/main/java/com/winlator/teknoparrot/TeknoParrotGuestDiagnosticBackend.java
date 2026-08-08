@@ -277,6 +277,9 @@ public final class TeknoParrotGuestDiagnosticBackend {
             !gamesDirectory.canWrite())
             throw new IOException(
                 "Winlator cannot access the shared TeknoParrotGames directory.");
+        File noMediaMarker = new File(gamesDirectory, ".nomedia");
+        if (!noMediaMarker.isFile() && !noMediaMarker.createNewFile())
+            throw new IOException("Winlator cannot suppress media scanning for the game library.");
     }
 
     private static boolean isContainerActive(RootFS rootFS, int containerId) {

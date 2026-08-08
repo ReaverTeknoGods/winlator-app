@@ -31,15 +31,28 @@ final class ActivityLaunchContract {
     private static final String COMPATIBILITY_PRESET = "compatibilityPreset";
     private static final String DISPLAY_MODE = "displayMode";
     private static final String PROFILE_CONFIG_INI = "profileConfigIni";
+    private static final String SCOPED_GAME_DIRECTORY = "scopedGameDirectory";
     static final String DISPLAY_MODE_CENTERED = "centered";
     static final String DISPLAY_MODE_ASPECT_FIT = "aspect-fit";
     static final String DISPLAY_MODE_FULLSCREEN = "fullscreen";
     static final String COMPATIBILITY_PRESET_MEDIA_WMV = "media-wmv";
     static final String COMPATIBILITY_PRESET_WINE_GSTREAMER = "wine-gstreamer";
+    static final String COMPATIBILITY_PRESET_KOF_XII_WINE_GSTREAMER =
+        "kof-xii-wine-gstreamer";
+    static final String COMPATIBILITY_PRESET_KOF_MIRA_BUILTIN_WINED3D =
+        "kof-mira-builtin-wined3d";
     static final String COMPATIBILITY_PRESET_TAITO_LEGACY_SCARD = "taito-legacy-scard";
     static final String COMPATIBILITY_PRESET_DIRTY_DRIVING_FULLSCREEN = "dirty-driving-fullscreen";
     static final String COMPATIBILITY_PRESET_EN_EINS_NATIVE_FULLSCREEN =
         "en-eins-native-fullscreen";
+    static final String COMPATIBILITY_PRESET_MUSIC_GUNGUN_NATIVE_FULLSCREEN =
+        "music-gungun-native-fullscreen";
+    static final String COMPATIBILITY_PRESET_BATTLE_GEAR_4_ORIGINAL =
+        "battle-gear-4-original";
+    static final String COMPATIBILITY_PRESET_JUSTICE_LEAGUE_WOW64_TRANSITION =
+        "justice-league-wow64-transition";
+    static final String COMPATIBILITY_PRESET_FNF_DRIFT_WOW64_TRANSITION =
+        "fnf-drift-wow64-transition";
     static final String COMPATIBILITY_PRESET_WMMT_TERMINAL = "wmmt-terminal";
     static final String COMPATIBILITY_PRESET_WMMT_NO_TERMINAL = "wmmt-no-terminal";
     static final String COMPATIBILITY_PRESET_WMMT3_YACARD = "wmmt3-yacard";
@@ -61,6 +74,7 @@ final class ActivityLaunchContract {
     static final String COMPATIBILITY_PRESET_XACT_LOCAL_REGISTER = "xact-local-register";
     static final String COMPATIBILITY_PRESET_EADP_DUAL_IO = "eadp-dual-io";
     static final String COMPATIBILITY_PRESET_SHARED_JVS_DUAL_IO = "shared-jvs-dual-io";
+    static final String COMPATIBILITY_PRESET_GAIA_ATTACK4_MEDIA = "gaia-attack4-media";
     static final String COMPATIBILITY_PRESET_DIRECT_TOUCH_JVS = "direct-touch-jvs";
     static final String COMPATIBILITY_PRESET_BOX64_INTERPRETER = "box64-interpreter";
     static final String COMPATIBILITY_PRESET_PORTRAIT_WINDOW_COUNTER_CLOCKWISE =
@@ -68,6 +82,12 @@ final class ActivityLaunchContract {
     static final String COMPATIBILITY_PRESET_PARKED_ENTRYPOINT = "parked-entrypoint";
     static final String COMPATIBILITY_PRESET_POST_START_REMOTE_THREAD =
         "post-start-remote-thread";
+    static final String COMPATIBILITY_PRESET_GGS_APM3_LOADER_SAFE =
+        "ggs-apm3-loader-safe";
+    static final String COMPATIBILITY_PRESET_BBTAG_APM3_LOADER_SAFE =
+        "bbtag-apm3-loader-safe";
+    static final String COMPATIBILITY_PRESET_OTOSHU_APM3_LOADER_SAFE =
+        "otoshu-apm3-loader-safe";
     static final String COMPATIBILITY_PRESET_WINED3D_REMOTE_THREAD =
         "wined3d-remote-thread";
     static final String COMPATIBILITY_PRESET_WINED3D_PARKED_ENTRYPOINT =
@@ -109,12 +129,14 @@ final class ActivityLaunchContract {
         String compatibilityPreset = "";
         String displayMode = DISPLAY_MODE_CENTERED;
         String profileConfigIni = "";
+        String scopedGameDirectory = "";
         if (FORWARDED_INPUT_DIAGNOSTIC.equals(launchKind)) {
             if (source.length() != 4)
                 throw new IllegalArgumentException("The diagnostic Activity launch schema changed.");
         }
         else if (WINDOWS_EXECUTABLE.equals(launchKind)) {
-            if (source.length() != 16 ||
+            boolean hasScopedGameDirectory = source.has(SCOPED_GAME_DIRECTORY);
+            if (source.length() != (hasScopedGameDirectory ? 17 : 16) ||
                 !source.has(EXECUTABLE) ||
                 !source.has(WORKING_DIRECTORY) ||
                 !source.has(ARGUMENTS) ||
@@ -146,6 +168,14 @@ final class ActivityLaunchContract {
             compatibilityPreset = requireCompatibilityPreset(source);
             displayMode = requireDisplayMode(source);
             profileConfigIni = requireProfileConfigIni(source);
+            if (hasScopedGameDirectory)
+                scopedGameDirectory = requireScopedGameDirectory(source);
+            boolean usesScopedGameDrive = usesDosDrive(executable, 'I') ||
+                usesDosDrive(workingDirectory, 'I') || usesDosDrive(libraryDirectory, 'I') ||
+                usesDosDrive(arguments, 'I');
+            if (usesScopedGameDrive != !scopedGameDirectory.isEmpty())
+                throw new IllegalArgumentException(
+                    "An I: launch path and a scoped Android game folder are required together.");
         }
         else {
             throw new IllegalArgumentException("The Activity launch kind is not implemented.");
@@ -167,7 +197,8 @@ final class ActivityLaunchContract {
             debugLoggingEnabled,
             compatibilityPreset,
             displayMode,
-            profileConfigIni);
+            profileConfigIni,
+            scopedGameDirectory);
     }
 
     static Request forwardedInputDiagnostic(SessionContract.PreparedRequest prepared) {
@@ -189,6 +220,7 @@ final class ActivityLaunchContract {
             true,
             "",
             DISPLAY_MODE_CENTERED,
+            "",
             "");
     }
 
@@ -239,9 +271,15 @@ final class ActivityLaunchContract {
         if (!value.isEmpty() &&
             !COMPATIBILITY_PRESET_MEDIA_WMV.equals(value) &&
             !COMPATIBILITY_PRESET_WINE_GSTREAMER.equals(value) &&
+            !COMPATIBILITY_PRESET_KOF_XII_WINE_GSTREAMER.equals(value) &&
+            !COMPATIBILITY_PRESET_KOF_MIRA_BUILTIN_WINED3D.equals(value) &&
             !COMPATIBILITY_PRESET_TAITO_LEGACY_SCARD.equals(value) &&
             !COMPATIBILITY_PRESET_DIRTY_DRIVING_FULLSCREEN.equals(value) &&
             !COMPATIBILITY_PRESET_EN_EINS_NATIVE_FULLSCREEN.equals(value) &&
+            !COMPATIBILITY_PRESET_MUSIC_GUNGUN_NATIVE_FULLSCREEN.equals(value) &&
+            !COMPATIBILITY_PRESET_BATTLE_GEAR_4_ORIGINAL.equals(value) &&
+            !COMPATIBILITY_PRESET_JUSTICE_LEAGUE_WOW64_TRANSITION.equals(value) &&
+            !COMPATIBILITY_PRESET_FNF_DRIFT_WOW64_TRANSITION.equals(value) &&
             !COMPATIBILITY_PRESET_WMMT_TERMINAL.equals(value) &&
             !COMPATIBILITY_PRESET_WMMT_NO_TERMINAL.equals(value) &&
             !COMPATIBILITY_PRESET_WMMT3_YACARD.equals(value) &&
@@ -261,10 +299,14 @@ final class ActivityLaunchContract {
             !COMPATIBILITY_PRESET_XACT_LOCAL_REGISTER.equals(value) &&
             !COMPATIBILITY_PRESET_EADP_DUAL_IO.equals(value) &&
             !COMPATIBILITY_PRESET_SHARED_JVS_DUAL_IO.equals(value) &&
+            !COMPATIBILITY_PRESET_GAIA_ATTACK4_MEDIA.equals(value) &&
             !COMPATIBILITY_PRESET_DIRECT_TOUCH_JVS.equals(value) &&
             !COMPATIBILITY_PRESET_BOX64_INTERPRETER.equals(value) &&
             !COMPATIBILITY_PRESET_PORTRAIT_WINDOW_COUNTER_CLOCKWISE.equals(value) &&
             !COMPATIBILITY_PRESET_POST_START_REMOTE_THREAD.equals(value) &&
+            !COMPATIBILITY_PRESET_GGS_APM3_LOADER_SAFE.equals(value) &&
+            !COMPATIBILITY_PRESET_BBTAG_APM3_LOADER_SAFE.equals(value) &&
+            !COMPATIBILITY_PRESET_OTOSHU_APM3_LOADER_SAFE.equals(value) &&
             !COMPATIBILITY_PRESET_PARKED_ENTRYPOINT.equals(value) &&
             !COMPATIBILITY_PRESET_WINED3D_REMOTE_THREAD.equals(value) &&
             !COMPATIBILITY_PRESET_WINED3D_PARKED_ENTRYPOINT.equals(value))
@@ -316,7 +358,7 @@ final class ActivityLaunchContract {
 
     private static String requireDosPath(JSONObject source, String key, boolean directory) {
         String value = requireString(source, key, 512);
-        if (!value.matches("(?i)^[CDEGH]:\\\\[^/\"]+$") ||
+        if (!value.matches("(?i)^[CDEGHI]:\\\\[^/\"]+$") ||
             value.endsWith("\\") ||
             value.contains("\\.\\") ||
             value.contains("\\..\\") ||
@@ -355,6 +397,54 @@ final class ActivityLaunchContract {
         return result;
     }
 
+    private static boolean usesDosDrive(String value, char letter) {
+        return value != null && value.length() >= 3 &&
+            Character.toUpperCase(value.charAt(0)) == letter &&
+            value.charAt(1) == ':' && value.charAt(2) == '\\';
+    }
+
+    private static boolean usesDosDrive(String[] values, char letter) {
+        if (values == null) return false;
+        for (String value : values) {
+            if (usesDosDrive(value, letter)) return true;
+        }
+        return false;
+    }
+
+    private static String requireScopedGameDirectory(JSONObject source) {
+        Object raw = source.opt(SCOPED_GAME_DIRECTORY);
+        if (!(raw instanceof String))
+            throw new IllegalArgumentException(
+                "Invalid Activity launch field: " + SCOPED_GAME_DIRECTORY);
+        String value = (String)raw;
+        if (value.trim().isEmpty() || value.length() > 1024 ||
+            value.indexOf('\\') >= 0 || value.indexOf('\"') >= 0 || value.endsWith("/"))
+            throw new IllegalArgumentException("A canonical Android game folder is required.");
+
+        String lower = value.toLowerCase(Locale.ROOT);
+        boolean primary = value.startsWith("/storage/emulated/0/");
+        boolean removable = value.matches("^/storage/[A-Za-z0-9_-]+/.+") &&
+            !lower.startsWith("/storage/emulated/") &&
+            !lower.startsWith("/storage/self/");
+        if (!primary && !removable)
+            throw new IllegalArgumentException("The game folder is outside shared storage.");
+        if (lower.equals("/storage/emulated/0/android") ||
+            lower.startsWith("/storage/emulated/0/android/data") ||
+            lower.startsWith("/storage/emulated/0/android/obb") ||
+            lower.matches("^/storage/[^/]+/android$") ||
+            lower.matches("^/storage/[^/]+/android/(data|obb)(/.*)?$"))
+            throw new IllegalArgumentException("Protected Android storage cannot be exposed.");
+        for (String segment : value.split("/")) {
+            if (segment.equals(".") || segment.equals(".."))
+                throw new IllegalArgumentException("The game folder contains traversal.");
+            for (int index = 0; index < segment.length(); index++) {
+                if (segment.charAt(index) < 0x20)
+                    throw new IllegalArgumentException("The game folder contains a control character.");
+            }
+        }
+        return value;
+    }
+
     static final class Request {
         final int protocolVersion;
         final String sessionId;
@@ -372,6 +462,7 @@ final class ActivityLaunchContract {
         final String compatibilityPreset;
         final String displayMode;
         final String profileConfigIni;
+        final String scopedGameDirectory;
 
         Request(
             int protocolVersion,
@@ -389,7 +480,8 @@ final class ActivityLaunchContract {
             boolean debugLoggingEnabled,
             String compatibilityPreset,
             String displayMode,
-            String profileConfigIni) {
+            String profileConfigIni,
+            String scopedGameDirectory) {
             this.protocolVersion = protocolVersion;
             this.sessionId = sessionId;
             this.containerId = containerId;
@@ -406,6 +498,7 @@ final class ActivityLaunchContract {
             this.compatibilityPreset = compatibilityPreset;
             this.displayMode = displayMode;
             this.profileConfigIni = profileConfigIni;
+            this.scopedGameDirectory = scopedGameDirectory;
         }
 
         void validatePrepared(SessionContract.PreparedRequest prepared) {
