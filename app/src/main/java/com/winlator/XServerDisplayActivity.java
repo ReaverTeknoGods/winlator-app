@@ -1821,8 +1821,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                     preparedWindowsLaunch.compatibilityPreset);
                 boolean isEadpDualIo = "eadp-dual-io".equals(
                     preparedWindowsLaunch.compatibilityPreset);
-                boolean isSharedJvsDualIo = "shared-jvs-dual-io".equals(
-                    preparedWindowsLaunch.compatibilityPreset);
+                boolean isSharedJvsDualIo = usesPreparedSharedJvsDualIo();
                 boolean usesUnsuffixedControlPipe = isJvsPipePair ||
                     isInitialDTheArcade;
                 String pipeName = usesUnsuffixedControlPipe ?
@@ -1848,9 +1847,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 teknoParrotBridgeLauncherComponent.setEnvVars(bridgeEnvVars);
                 teknoParrotBridgeLauncherComponent.setBox64Preset(box64Preset);
 
-                // ALLSIDTA and EADP use two independent desktop pipes. The
-                // primary helper carries USB-I/O or the shared gun-state page;
-                // AMDaemon/EADP's second cabinet device opens TeknoParrot_JVS.
+                // ALLSIDTA, EADP and shared-JVS titles use two independent
+                // desktop pipes. The primary helper carries USB-I/O or the
+                // shared gun-state page; the second cabinet device opens
+                // TeknoParrot_JVS.
                 // Start both helpers before either game executable so neither
                 // one-shot CreateFile call can miss its server.
                 if (isInitialDTheArcade || isEadpDualIo || isSharedJvsDualIo) {
@@ -2266,10 +2266,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
         GLRenderer renderer = xServerView.getRenderer();
         boolean usesDirectCabinetTouch = preparedWindowsLaunch != null &&
-            ("shared-jvs-dual-io".equals(preparedWindowsLaunch.compatibilityPreset) ||
-             "gaia-attack4-media".equals(preparedWindowsLaunch.compatibilityPreset) ||
-             "music-gungun-native-fullscreen".equals(
-                 preparedWindowsLaunch.compatibilityPreset) ||
+            (usesPreparedSharedJvsDualIo() ||
              "direct-touch-jvs".equals(preparedWindowsLaunch.compatibilityPreset));
         if (usesDirectCabinetTouch) {
             // Wonderland Wars and Shining Force Cross read title-specific
@@ -2309,6 +2306,20 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         }
 
         inputControlsView.invalidate();
+    }
+
+    /**
+     * These composite presets all retain the shared-page plus secondary JVS
+     * cabinet contract. Keep the capability in one place so adding media or
+     * display behavior cannot silently suppress the TeknoParrot_JVS helper.
+     */
+    private boolean usesPreparedSharedJvsDualIo() {
+        if (preparedWindowsLaunch == null)
+            return false;
+        String preset = preparedWindowsLaunch.compatibilityPreset;
+        return "shared-jvs-dual-io".equals(preset) ||
+            "gaia-attack4-media".equals(preset) ||
+            "music-gungun-native-fullscreen".equals(preset);
     }
 
     private void applyPreparedFrameRateLimit() {
