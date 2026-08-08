@@ -183,7 +183,9 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private WifiManager.MulticastLock wmmtTerminalMulticastLock;
     private volatile boolean cxbxrProcessMonitorStarted;
     private volatile boolean preparedGameProcessMonitorStarted;
+    private volatile boolean preparedGameStartupMonitorStarted;
     private boolean preparedWineGStreamerOutputFormatPatched;
+    private File preparedApmPayloadFile;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -558,6 +560,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     protected void onDestroy() {
         prepareManagedSessionGraphicsTeardown();
         restorePreparedWineGStreamerOutputFormat();
+        clearPreparedApmPayload();
         if (container != null) container.clearTransientDrives();
         synchronized (TEKNOPARROT_SESSION_LOCK) {
             if (teknoParrotSessionActivity.get() == this)
@@ -971,6 +974,65 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         return executable.endsWith("\\cxbxr-ldr.exe");
     }
 
+    private void monitorPreparedGameStartup() {
+        if (preparedWindowsLaunch == null || preparedGameStartupMonitorStarted)
+            return;
+        preparedGameStartupMonitorStarted = true;
+        Thread startupMonitor = new Thread(() -> {
+            long readyWithoutGameSince = -1L;
+            long deadline = android.os.SystemClock.elapsedRealtime() + 20_000L;
+            while (!isFinishing() && !isDestroyed() &&
+                   android.os.SystemClock.elapsedRealtime() < deadline) {
+                long now = android.os.SystemClock.elapsedRealtime();
+                if (!winHandler.isInitialized() ||
+                    hasPreparedBootstrapLoaderOrGameProcess()) {
+                    readyWithoutGameSince = -1L;
+                }
+                else if (readyWithoutGameSince < 0L) {
+                    readyWithoutGameSince = now;
+                }
+                else if (now - readyWithoutGameSince >= 2_000L) {
+                    String retryCommand = getWineStartCommand();
+                    String wrapper = "C:\\windows\\winhandler.exe ";
+                    if (retryCommand.regionMatches(true, 0, wrapper, 0, wrapper.length()))
+                        retryCommand = retryCommand.substring(wrapper.length());
+                    winHandler.exec(retryCommand);
+                    if (preparedWindowsLaunch.debugLoggingEnabled)
+                        Log.w(TAG, "Retried a prepared launch that never created its bootstrap process.");
+                    return;
+                }
+                android.os.SystemClock.sleep(250L);
+            }
+        }, "PreparedGameStartupMonitor");
+        startupMonitor.start();
+    }
+
+    private boolean hasPreparedBootstrapLoaderOrGameProcess() {
+        if (ProcessHelper.hasLiveGuestProcessName("teknoparrot-pat") ||
+            ProcessHelper.hasLiveGuestProcessName("openparrotloade"))
+            return true;
+        String gameExecutable = findPreparedGameExecutable();
+        if (gameExecutable == null) return false;
+        String processMarker = FileUtils.getName(gameExecutable);
+        int extension = processMarker.lastIndexOf('.');
+        if (extension > 0) processMarker = processMarker.substring(0, extension);
+        processMarker = processMarker.toLowerCase(java.util.Locale.ROOT);
+        if (processMarker.length() > 15)
+            processMarker = processMarker.substring(0, 15);
+        return !processMarker.isEmpty() &&
+            ProcessHelper.hasLiveGuestProcessName(processMarker);
+    }
+
+    private boolean isFnfDriftWow64TransitionPreparedLaunch() {
+        if (preparedWindowsLaunch == null ||
+            !"fnf-drift-wow64-transition".equals(
+                preparedWindowsLaunch.compatibilityPreset))
+            return false;
+        String gameExecutable = findPreparedGameExecutable();
+        return gameExecutable != null && gameExecutable.replace('/', '\\')
+            .toLowerCase(java.util.Locale.ROOT).endsWith("\\sdaemon.exe");
+    }
+
     private boolean isPreparedCxbxrPerformanceTitle() {
         if (!isPreparedCxbxrLaunch())
             return false;
@@ -1314,7 +1376,25 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                     isPreparedCxbxrLaunch();
                 boolean useCardService =
                     useWmmt3CardService || useCxbxrWmmtCardService;
-                if (useCardService) {
+                boolean useTaikoAuthService = "taiko-custom-resolution".equals(
+                        preparedWindowsLaunch.compatibilityPreset);
+                if (useTaikoAuthService) {
+                    String gameExecutable = findPreparedGameExecutable();
+                    String amcusDirectory = gameExecutable != null
+                        ? FileUtils.getDirname(gameExecutable) + "\\AMCUS"
+                        : "";
+                    envVars.put(
+                        "TP_PRELAUNCH_EXECUTABLE",
+                        amcusDirectory + "\\AMAuthd.exe");
+                    envVars.put("TP_PRELAUNCH_WORKING_DIRECTORY", amcusDirectory);
+                    envVars.remove("TP_PRELAUNCH_DIRECT");
+                    envVars.put("TP_PRELAUNCH_HIDE_WINDOW", "1");
+                    envVars.remove("TP_PRELAUNCH_READY_PIPE");
+                    envVars.put("TP_PRELAUNCH_TERMINATE_WITH_GAME", "1");
+                    envVars.remove("TP_PRELAUNCH_ARGUMENTS");
+                    envVars.remove("TP_PRELAUNCH_WAIT_FOR_LOADER");
+                }
+                else if (useCardService) {
                     // WMMT3 uses the S31R/38400-even helper bundled with
                     // ElfLoader2. Chihiro WMMT1/2 use a dedicated
                     // C1231LR/9600-none configuration beside their regional
@@ -1379,7 +1459,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 }
                 else if (!"initial-d8".equals(
                         preparedWindowsLaunch.compatibilityPreset) &&
-                        !useCardService) {
+                        !useCardService && !useTaikoAuthService) {
                     envVars.remove("TP_PRELAUNCH_EXECUTABLE");
                     envVars.remove("TP_PRELAUNCH_WAIT_FOR_LOADER");
                     envVars.remove("OPENSSL_ia32cap");
@@ -1408,7 +1488,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 }
                 else if (!"initial-d-the-arcade".equals(
                         preparedWindowsLaunch.compatibilityPreset) &&
-                        !useCardService) {
+                        !useCardService && !useTaikoAuthService) {
                     envVars.remove("TP_PRELAUNCH_EXECUTABLE");
                 }
 
@@ -1436,6 +1516,12 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 // run Wine initialization to completion, suspend at the real
                 // entry point, and execute LoadLibrary on that same thread.
                 else if ("post-start-remote-thread".equals(
+                        preparedWindowsLaunch.compatibilityPreset) ||
+                    "ggs-apm3-loader-safe".equals(
+                        preparedWindowsLaunch.compatibilityPreset) ||
+                    "bbtag-apm3-loader-safe".equals(
+                        preparedWindowsLaunch.compatibilityPreset) ||
+                    "otoshu-apm3-loader-safe".equals(
                         preparedWindowsLaunch.compatibilityPreset)) {
                     envVars.remove("TP_REMOTETHREAD");
                     envVars.remove("TP_POSTSTART_REMOTETHREAD_MS");
@@ -1494,6 +1580,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                     }
                 }
                 else if (isPreparedBridge64Bit() ||
+                    isBattleFantasiaPreparedLaunch() ||
+                    isFnfDriftWow64TransitionPreparedLaunch() ||
+                    "justice-league-wow64-transition".equals(
+                        preparedWindowsLaunch.compatibilityPreset) ||
                     "wacky-races-network".equals(
                         preparedWindowsLaunch.compatibilityPreset) ||
                     "parked-entrypoint".equals(
@@ -1791,6 +1881,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         }
 
         winHandler.start();
+        monitorPreparedGameStartup();
         envVars.clear();
         graphicsDriver = null;
         dxwrapperConfig = null;
@@ -2483,8 +2574,20 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     }
 
     private boolean prepareTeknoParrotCompatibilityPayload() {
-        if (preparedWindowsLaunch == null ||
-            !"taito-legacy-scard".equals(preparedWindowsLaunch.compatibilityPreset))
+        if (preparedWindowsLaunch == null)
+            return true;
+
+        boolean is64BitApm = "ggs-apm3-loader-safe".equals(
+                preparedWindowsLaunch.compatibilityPreset) ||
+            "otoshu-apm3-loader-safe".equals(
+                preparedWindowsLaunch.compatibilityPreset);
+        boolean is32BitApm = "bbtag-apm3-loader-safe".equals(
+                preparedWindowsLaunch.compatibilityPreset);
+        if (is64BitApm || is32BitApm)
+            return prepareApmLoaderSafePayload(is64BitApm);
+        clearPreparedApmPayload();
+
+        if (!"taito-legacy-scard".equals(preparedWindowsLaunch.compatibilityPreset))
             return true;
 
         File destination = new File(
@@ -2496,6 +2599,50 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             return false;
         }
         return true;
+    }
+
+    private boolean prepareApmLoaderSafePayload(boolean is64BitApm) {
+        String apmFileName = is64BitApm ? "apm.dll" : "apm_x86.dll";
+        long apmDllMainOffset = is64BitApm ? 0x13f60L : 0x11640L;
+        String sourceDosPath = preparedWindowsLaunch.libraryDirectory + "\\" + apmFileName;
+        String sourcePath = WineUtils.dosToUnixPath(sourceDosPath, container);
+        if (sourcePath.isEmpty()) {
+            Log.e(TAG, "Could not resolve the APM compatibility library.");
+            return false;
+        }
+
+        File source = new File(sourcePath);
+        File destination = new File(
+            rootFS.getRootDir(),
+            RootFS.WINEPREFIX + "/drive_c/windows/" +
+                (is64BitApm ? "system32/" : "syswow64/") + apmFileName);
+        if (!source.isFile() || source.length() <= apmDllMainOffset + 8L ||
+            !FileUtils.copy(source, destination)) {
+            Log.e(TAG, "Could not stage the APM compatibility library.");
+            return false;
+        }
+
+        byte[] returnTrue = is64BitApm
+            ? new byte[] {(byte)0xb8, 1, 0, 0, 0, (byte)0xc3}
+            : new byte[] {(byte)0xb8, 1, 0, 0, 0, (byte)0xc2, 12, 0};
+        try (RandomAccessFile output = new RandomAccessFile(destination, "rw")) {
+            output.seek(apmDllMainOffset);
+            output.write(returnTrue);
+            output.getFD().sync();
+            preparedApmPayloadFile = destination;
+            return true;
+        }
+        catch (IOException error) {
+            FileUtils.delete(destination);
+            Log.e(TAG, "Could not patch the prefix-local APM DllMain.", error);
+            return false;
+        }
+    }
+
+    private void clearPreparedApmPayload() {
+        if (preparedApmPayloadFile == null) return;
+        FileUtils.delete(preparedApmPayloadFile);
+        preparedApmPayloadFile = null;
     }
 
     private void applyPreparedWineRegistryWorkarounds() {
@@ -2683,7 +2830,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         if (preparedWindowsLaunch != null) {
             String executable = preparedWindowsLaunch.executable;
             if (preparedWindowsLaunch.libraryDirectory != null) {
-                StringBuilder bootstrapCommand = new StringBuilder("C:\\windows\\winhandler.exe /dir ")
+                StringBuilder command = new StringBuilder("C:\\windows\\winhandler.exe /dir ")
                     .append(StringUtils.escapeDOSPath(preparedWindowsLaunch.workingDirectory))
                     .append(' ')
                     .append(quotePreparedWindowsArgument(PREPARED_WINDOWS_BOOTSTRAP_DOS_PATH))
@@ -2692,9 +2839,9 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                     .append(' ')
                     .append(quotePreparedWindowsArgument(executable));
                 for (String argument : preparedWindowsLaunch.arguments)
-                    bootstrapCommand.append(' ').append(quotePreparedWindowsArgument(argument));
-                appendPreparedCxbxrDebugMode(bootstrapCommand);
-                return bootstrapCommand.toString();
+                    command.append(' ').append(quotePreparedWindowsArgument(argument));
+                appendPreparedCxbxrDebugMode(command);
+                return command.toString();
             }
 
             String launchTarget = executable;

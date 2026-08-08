@@ -358,7 +358,8 @@ final class ActivityLaunchContract {
 
     private static String requireDosPath(JSONObject source, String key, boolean directory) {
         String value = requireString(source, key, 512);
-        if (!value.matches("(?i)^[CDEGHI]:\\\\[^/\"]+$") ||
+        if ((!value.matches("(?i)^[CDEGH]:\\\\[^/\"]+$") &&
+             !value.matches("(?i)^I:\\\\[^/\"]+$")) ||
             value.endsWith("\\") ||
             value.contains("\\.\\") ||
             value.contains("\\..\\") ||
