@@ -30,8 +30,13 @@ public abstract class RootFSInstaller {
     // Version 22 forces existing installations to unpack the current rootfs.
     // Its GStreamer libav plugin includes the Indeo 4/5 decoders that were
     // absent from some already-installed version-21 root filesystems.
-    public static final byte LATEST_VERSION = 22;
-    public static final byte UPDATE_WINEPREFIX_VERSION = 16; // set it if main wine version change
+    // Version 23 also refreshes existing main-Wine prefixes. Version 22
+    // updated the immutable Wine/GStreamer payload but left the PE-side
+    // winegstreamer DLLs in already-created prefixes at their older build.
+    // Mixing those builds leaves the WoW64 Unix-call table out of sync and
+    // breaks Indeo/WMV decoding even though every required plugin is present.
+    public static final byte LATEST_VERSION = 23;
+    public static final byte UPDATE_WINEPREFIX_VERSION = 22; // set it if main wine version change
     public static final String FILENAME = "rootfs.tzst";
 
     private static void resetContainerRFSVersions(Context context) {

@@ -142,6 +142,13 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         "teknoparrot/windows-path-bootstrap.exe";
     private static final String PREPARED_WINDOWS_BOOTSTRAP_DOS_PATH =
         "C:\\windows\\teknoparrot-path-bootstrap.exe";
+    private static final String FFDSHOW_ASSET_DIRECTORY =
+        "teknoparrot/ffdshow-x86";
+    private static final String[] FFDSHOW_RUNTIME_ASSET_NAMES = {
+        "ffdshow.ax",
+        "ffmpeg.dll",
+        "ff_vfw.dll"
+    };
     private XServerView xServerView;
     private InputControlsView inputControlsView;
     private TouchpadView touchpadView;
@@ -338,8 +345,16 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                     win32AppWorkarounds.applyPreparedStartupWorkarounds(
                         preparedWindowsLaunch.executable,
                         preparedWindowsLaunch.arguments);
+                    String effectiveCompatibilityPreset =
+                        resolvePreparedCompatibilityPreset();
                     win32AppWorkarounds.applyTeknoParrotCompatibilityPreset(
-                        preparedWindowsLaunch.compatibilityPreset);
+                        effectiveCompatibilityPreset);
+                    if (!effectiveCompatibilityPreset.equals(
+                            preparedWindowsLaunch.compatibilityPreset))
+                        Log.i(TAG, "Mapped legacy TeknoParrot preset " +
+                            preparedWindowsLaunch.compatibilityPreset + " to " +
+                            effectiveCompatibilityPreset + " for controls profile " +
+                            preparedWindowsLaunch.controlsProfileId);
                     if (!ensurePreparedWow64Transition() ||
                         !ensurePreparedWineGStreamerOutputFormat() ||
                         !prepareTeknoParrotCompatibilityPayload()) {
@@ -405,6 +420,16 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 dxwrapperConfig = selectedDxwrapperConfig[0].toString() + "|" +
                     selectedDxwrapperConfig[1].toString();
             }
+
+            // Haunted Museum II resets its D3D9Ex presentation surface when
+            // the DirectShow movie graph takes ownership. Both bundled DXVK
+            // revisions lose the Vulkan surface at that transition and the
+            // game then dereferences the failed swap chain. Keep this title on
+            // WineD3D, which owns the Win32 surface for the whole media reset.
+            if (preparedWindowsLaunch != null &&
+                "haunted-museum2-media".equals(
+                    resolvePreparedCompatibilityPreset()))
+                dxwrapper = DXWrappers.WINED3D;
 
             // Homura opens and closes DirectSound/ALSA streams at extreme
             // frequency. HOD3 also transitions from the Chihiro boot sound into
@@ -574,6 +599,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         if (environment != null) environment.stopEnvironmentComponents();
         if (hasPreparedWindowsLaunch)
             ProcessHelper.killGuestProcesses();
+        restorePreparedWineGStreamerOutputFormat();
         if (hasPreparedWindowsLaunch && !isChangingConfigurations())
             TeknoParrotBridgeService.releasePreparedSession(this, forwardedSessionId);
         releasePreparedMulticastLock();
@@ -685,31 +711,70 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             rootDir,
             RootFS.WINEPREFIX + "/drive_c/windows/syswow64/winegstreamer.dll");
         try {
-            WineGStreamerOutputFormatPatch.Result result =
-                WineGStreamerOutputFormatPatch.configure(
-                    immutableWineDll, prefixDll, enabled);
-            if (enabled &&
-                result == WineGStreamerOutputFormatPatch.Result.UNSUPPORTED) {
+            // Experimental WoW64 maps the built-in PE from /opt/wine rather
+            // than the prefix copy. Configure that active image for KOF XII.
+            // Every unrelated launch restores it first, then also cleans up
+            // the obsolete prefix-local candidate left by older packages.
+            WineGStreamerOutputFormatPatch.Result result;
+            WineGStreamerOutputFormatPatch.Result prefixResult =
+                WineGStreamerOutputFormatPatch.Result.NOT_PRESENT;
+            if (enabled) {
+                result = WineGStreamerOutputFormatPatch.configureInPlace(
+                    immutableWineDll, true);
+            }
+            else {
+                result = WineGStreamerOutputFormatPatch.configureInPlace(
+                    immutableWineDll, false);
+                if (result != WineGStreamerOutputFormatPatch.Result.UNSUPPORTED)
+                    prefixResult = WineGStreamerOutputFormatPatch.configure(
+                        immutableWineDll, prefixDll, false);
+            }
+            if (enabled && result == WineGStreamerOutputFormatPatch.Result.UNSUPPORTED) {
                 Log.e(TAG,
-                    "KOF XII Wine-GStreamer recovery refused an unknown binary: " +
-                    "immutable=" +
-                    WineGStreamerOutputFormatPatch.fingerprint(immutableWineDll) +
-                    "; prefix=" +
-                    WineGStreamerOutputFormatPatch.fingerprint(prefixDll));
+                    "Wine-GStreamer output recovery refused an unknown binary: " +
+                    "active=" +
+                    WineGStreamerOutputFormatPatch.fingerprint(immutableWineDll));
                 return false;
             }
             if (result == WineGStreamerOutputFormatPatch.Result.APPLIED ||
                 result == WineGStreamerOutputFormatPatch.Result.RESTORED ||
                 (enabled && preparedWindowsLaunch.debugLoggingEnabled))
                 Log.i(TAG,
-                    "Prepared KOF XII Wine-GStreamer format state: " + result);
+                    "Prepared active Wine-GStreamer output format state: " + result);
+            if (prefixResult == WineGStreamerOutputFormatPatch.Result.RESTORED)
+                Log.i(TAG, "Restored obsolete prefix-local Wine-GStreamer patch.");
             return true;
         }
         catch (Exception error) {
             Log.e(TAG,
-                "Could not configure the KOF XII Wine-GStreamer recovery.",
+                "Could not configure the Wine-GStreamer output recovery.",
                 error);
             return !enabled;
+        }
+    }
+
+    private void restorePreparedWineGStreamerOutputFormat() {
+        if (preparedWindowsLaunch == null ||
+            !"kof-xii-wine-gstreamer".equals(
+                preparedWindowsLaunch.compatibilityPreset) || rootFS == null)
+            return;
+        File rootDir = rootFS.getRootDir();
+        File activeWineDll = new File(
+            rootDir,
+            rootFS.getWinePath() + "/lib/wine/i386-windows/winegstreamer.dll");
+        File prefixDll = new File(
+            rootDir,
+            RootFS.WINEPREFIX + "/drive_c/windows/syswow64/winegstreamer.dll");
+        try {
+            WineGStreamerOutputFormatPatch.Result activeResult =
+                WineGStreamerOutputFormatPatch.configureInPlace(activeWineDll, false);
+            if (activeResult != WineGStreamerOutputFormatPatch.Result.UNSUPPORTED)
+                WineGStreamerOutputFormatPatch.configure(activeWineDll, prefixDll, false);
+            if (activeResult == WineGStreamerOutputFormatPatch.Result.RESTORED)
+                Log.i(TAG, "Restored KOF XII's active Wine-GStreamer output format.");
+        }
+        catch (Exception error) {
+            Log.e(TAG, "Could not restore KOF XII's Wine-GStreamer output format.", error);
         }
     }
 
@@ -1317,7 +1382,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             // Wine and DXVK can produce enough output during game startup to add
             // noticeable latency on Android.  Ordinary Winlator launches retain
             // their configured values so its diagnostic workflow is unaffected.
-            if (preparedWindowsLaunch != null && !preparedWindowsLaunch.debugLoggingEnabled) {
+            if (preparedWindowsLaunch != null &&
+                !preparedWindowsLaunch.debugLoggingEnabled) {
                 envVars.put("TP_ANDROID_DEBUG_LOGGING", "0");
                 envVars.remove("TP_DIRTY_LOCAL_DIAGNOSTICS");
                 envVars.remove("TP_ENEINS_DIAGNOSTICS");
@@ -1353,6 +1419,15 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                         preparedWineDebug += ",+loaddll";
                     if (!preparedWineDebug.contains("+reg"))
                         preparedWineDebug += ",+reg";
+                }
+                if ("xact-local-register".equals(
+                        preparedWindowsLaunch.compatibilityPreset)) {
+                    // GTI's static cabinet surface remains alive while its
+                    // WMV3 DirectShow graph fails to connect. Restrict verbose
+                    // graph tracing to this title and only when the user's
+                    // per-game diagnostic switch is enabled.
+                    preparedWineDebug =
+                        "+warn,+err,+seh,+quartz,+strmbase,+winegstreamer";
                 }
                 envVars.put("WINEDEBUG", preparedWineDebug);
                 envVars.put("DXVK_LOG_LEVEL", "info");
@@ -1718,6 +1793,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 else {
                     envVars.remove("TP_CRAZY_SPEED_FAKE_MEMORY_WMI");
                 }
+                envVars.remove("BOX64_NODYNAREC");
                 envVars.remove("TP_JUSTICE_LEAGUE_ASPECT_GUARD");
                 if (isCrazySpeedPreparedLaunch()) {
                     // The old Ogre D3D9 renderer uses x87 control/status state.
@@ -1746,14 +1822,19 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 // request software DirectSound buffers on Android.
                 envVars.put("TP_EXBOARD_SOFTWARE_DSOUND", "1");
 
-                // Homura's interpreter A/B removed the immediate invalid SEH
-                // frame. Its apparent map-table failure came from the ALSA
-                // AudioTrack churn handled by the PulseAudio override above,
-                // so keep this genuinely interpreter-only as the preset name
-                // promises.
+                // Homura keeps this genuinely interpreter-only as the preset
+                // name promises. Gaia additionally needs the interpreter for
+                // the complete 32-bit process: a narrow BOX64_NODYNAREC range
+                // still inherited the dynarec FP trap state and failed at the
+                // same masked DIVSD movie calculation.
                 if ("box64-interpreter".equals(
-                        preparedWindowsLaunch.compatibilityPreset)) {
+                        preparedWindowsLaunch.compatibilityPreset) ||
+                    "gaia-attack4-media".equals(
+                        resolvePreparedCompatibilityPreset())) {
                     envVars.put("BOX64_DYNAREC", "0");
+                }
+                else {
+                    envVars.remove("BOX64_DYNAREC");
                 }
 
                 // Dirty Drivin' can leave its bootstrap renderer normally and
@@ -1786,6 +1867,23 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                     runOnUiThread(this::finish);
                     return;
                 }
+            }
+            else if (preparedWindowsLaunch != null && preparedWindowsLaunch.productionBridge &&
+                     "gaia-attack4-media".equals(
+                         resolvePreparedCompatibilityPreset())) {
+                teknoParrotWinePreflightComponent = createGaiaFfdshowWinePreflight(
+                    envVars, box64Preset);
+                if (teknoParrotWinePreflightComponent == null) {
+                    runOnUiThread(this::finish);
+                    return;
+                }
+            }
+            else if (preparedWindowsLaunch != null && preparedWindowsLaunch.productionBridge &&
+                     "haunted-museum2-media".equals(
+                         resolvePreparedCompatibilityPreset()) &&
+                     !configureHauntedMuseumIndeoDriver()) {
+                runOnUiThread(this::finish);
+                return;
             }
             else if (preparedWindowsLaunch != null && preparedWindowsLaunch.productionBridge &&
                      "xact-local-register".equals(
@@ -2319,6 +2417,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         String preset = preparedWindowsLaunch.compatibilityPreset;
         return "shared-jvs-dual-io".equals(preset) ||
             "gaia-attack4-media".equals(preset) ||
+            "haunted-museum2-media".equals(preset) ||
             "music-gungun-native-fullscreen".equals(preset);
     }
 
@@ -3253,6 +3352,123 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     }
 
     /**
+     * Gaia Attack 4 mixes WMV3 and Indeo 5 AVI clips. Wine handles the WMV3
+     * clips, while ffdshow's 32-bit VfW driver supplies the missing IV50 path.
+     * The payload lives inside this app and is staged only in Winlator's
+     * private prefix. Drivers32 is rewritten on every Gaia launch. The
+     * DirectShow filter is deliberately unregistered: Gaia needs only the VfW
+     * driver, and leaving ffdshow's DirectShow class globally registered makes
+     * unrelated WMV3 games attempt an unusable decoder before Wine-GStreamer.
+     */
+    private TeknoParrotWinePreflightComponent createGaiaFfdshowWinePreflight(
+            EnvVars sourceEnvVars, String box64Preset) {
+        try {
+            File winePrefix = new File(rootFS.getRootDir(), RootFS.WINEPREFIX);
+            File serviceDirectory = new File(winePrefix, "drive_c/teknoparrot-service");
+            File ffdshowDirectory = new File(serviceDirectory, "ffdshow-x86");
+            if (!ffdshowDirectory.isDirectory() && !ffdshowDirectory.mkdirs())
+                throw new IOException("Could not create the private ffdshow directory.");
+
+            for (String assetName : FFDSHOW_RUNTIME_ASSET_NAMES) {
+                String assetPath = FFDSHOW_ASSET_DIRECTORY + "/" + assetName;
+                long expectedSize = FileUtils.getSize(this, assetPath);
+                File destination = new File(ffdshowDirectory, assetName);
+                if (expectedSize <= 0)
+                    throw new IOException("Missing packaged ffdshow payload " + assetName + '.');
+                if ((!destination.isFile() || destination.length() != expectedSize) &&
+                    !FileUtils.copyAssetAtomic(this, assetPath, destination))
+                    throw new IOException("Could not stage ffdshow payload " + assetName + '.');
+                if (!destination.isFile() || destination.length() != expectedSize)
+                    throw new IOException("Invalid staged ffdshow payload " + assetName + '.');
+            }
+
+            // ffdshow intentionally defaults optional VFW decoders to off.
+            // Enable only Indeo 5 so WMV and every unrelated codec keep Wine's
+            // existing decoder selection.
+            File userRegFile = new File(winePrefix, "user.reg");
+            try (WineRegistryEditor registryEditor =
+                     new WineRegistryEditor(userRegFile)) {
+                registryEditor.setDwordValue(
+                    "Software\\GNU\\ffdshow_vfw", "iv50", 1);
+            }
+
+            setVfwIndeo5Driver(
+                winePrefix,
+                "C:\\teknoparrot-service\\ffdshow-x86\\ff_vfw.dll");
+
+            File marker = new File(serviceDirectory, "ffdshow-r4532-gaia-vfw-only-v2.flag");
+            TeknoParrotWinePreflightComponent component =
+                new TeknoParrotWinePreflightComponent(
+                    "ffdshow.ax", marker, ffdshowDirectory);
+            component.setGuestExecutable(
+                "wine C:\\windows\\syswow64\\regsvr32.exe /u /s " +
+                "C:\\teknoparrot-service\\ffdshow-x86\\ffdshow.ax");
+            EnvVars preflightEnvVars = new EnvVars();
+            preflightEnvVars.putAll(sourceEnvVars);
+            component.setEnvVars(preflightEnvVars);
+            component.setBox64Preset(box64Preset);
+            return component;
+        }
+        catch (Exception error) {
+            Log.e(TAG, "Could not prepare Gaia's Indeo 5 decoder.", error);
+            return null;
+        }
+    }
+
+    /** Selects the native Intel codec shipped with Haunted Museum II. */
+    private boolean configureHauntedMuseumIndeoDriver() {
+        String gameExecutable = findPreparedGameExecutable();
+        if (gameExecutable == null) {
+            Log.e(TAG, "Haunted Museum II has no validated game executable.");
+            return false;
+        }
+
+        try {
+            if (!isPreparedDosPathWithinDrive(gameExecutable, false))
+                throw new IOException("The Haunted Museum executable left its Wine drive.");
+            File gameFile = new File(WineUtils.dosToUnixPath(gameExecutable, container))
+                .getCanonicalFile();
+            File codecFile = null;
+            File[] siblings = gameFile.getParentFile().listFiles();
+            if (siblings != null) {
+                for (File sibling : siblings) {
+                    if (sibling.isFile() && sibling.length() != 0 &&
+                        sibling.getName().equalsIgnoreCase("ir50_32.dll")) {
+                        codecFile = sibling;
+                        break;
+                    }
+                }
+            }
+            if (codecFile == null)
+                throw new IOException("ir50_32.dll is missing beside the game executable.");
+
+            String codecDosPath = FileUtils.getDirname(gameExecutable) + "\\" +
+                codecFile.getName();
+            setVfwIndeo5Driver(
+                new File(rootFS.getRootDir(), RootFS.WINEPREFIX), codecDosPath);
+            return true;
+        }
+        catch (Exception error) {
+            Log.e(TAG, "Could not select Haunted Museum II's Indeo 5 codec.", error);
+            return false;
+        }
+    }
+
+    private static void setVfwIndeo5Driver(File winePrefix, String driverPath)
+            throws IOException {
+        File systemRegFile = new File(winePrefix, "system.reg");
+        if (!systemRegFile.isFile())
+            throw new IOException("The Wine system registry is missing.");
+        try (WineRegistryEditor registryEditor =
+                 new WineRegistryEditor(systemRegFile)) {
+            registryEditor.setStringValue(
+                "Software\\Microsoft\\Windows NT\\CurrentVersion\\Drivers32",
+                "VIDC.IV50",
+                driverPath);
+        }
+    }
+
+    /**
      * GTI Club ships the exact 32-bit XACT COM server required by its sound
      * runtime beside the game executable. Register that immutable local DLL in
      * the active Wine prefix once, instead of replacing it with a global copy.
@@ -3294,14 +3510,32 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             if (!FileUtils.copy(xactDll, stagedXactDll) ||
                 !stagedXactDll.isFile() || stagedXactDll.length() != xactDll.length())
                 throw new IOException("Could not stage the exact local XACT COM server.");
+
+            // Older Gaia builds registered ffdshow.ax globally even though
+            // Gaia consumes only its VfW decoder. GTI's WMV3 graph then tries
+            // that stale DirectShow class first and remains black after the
+            // static title screen. Remove that optional filter before
+            // restoring GTI's exact XACT registration. Runtime media selection
+            // then stays on the title-scoped Wine-GStreamer path.
+            File gtiPreflightScript = new File(serviceDirectory, "gti-preflight.cmd");
+            String gtiPreflight =
+                "@echo off\r\n" +
+                "if exist C:\\teknoparrot-service\\ffdshow-x86\\ffdshow.ax " +
+                "C:\\windows\\syswow64\\regsvr32.exe /u /s " +
+                "C:\\teknoparrot-service\\ffdshow-x86\\ffdshow.ax\r\n" +
+                "C:\\windows\\syswow64\\regsvr32.exe /s " +
+                "C:\\teknoparrot-service\\" + stagedXactDll.getName() + "\r\n" +
+                "exit /b %errorlevel%\r\n";
+            if (!FileUtils.writeStringAtomic(gtiPreflightScript, gtiPreflight))
+                throw new IOException("Could not stage GTI's Wine preflight script.");
             File marker = new File(
-                serviceDirectory, "xactengine2-10-v3.flag");
+                serviceDirectory, "xactengine2-10-gti-wine-gstreamer-v7.flag");
             TeknoParrotWinePreflightComponent component =
                 new TeknoParrotWinePreflightComponent(
                     stagedXactDll.getName(), marker, true, serviceDirectory);
             component.setGuestExecutable(
-                "wine C:\\windows\\syswow64\\regsvr32.exe /s " +
-                "C:\\teknoparrot-service\\" + stagedXactDll.getName());
+                "wine C:\\windows\\syswow64\\cmd.exe /c " +
+                "C:\\teknoparrot-service\\gti-preflight.cmd");
             EnvVars preflightEnvVars = new EnvVars();
             preflightEnvVars.putAll(sourceEnvVars);
             component.setEnvVars(preflightEnvVars);
@@ -4379,6 +4613,25 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private static boolean isWmmtCompatibilityPreset(String compatibilityPreset) {
         return "wmmt-terminal".equals(compatibilityPreset) ||
             "wmmt-no-terminal".equals(compatibilityPreset);
+    }
+
+    /**
+     * Keep the companion compatible with a TPUI and module update arriving in
+     * either order. Older TPUI releases use shared-jvs-dual-io for these two
+     * Taito gun titles, before their distinct movie-decoder presets existed.
+     * Their controls ids are stable and title-specific, so they can safely
+     * select the media behavior without broadening it to Wonderland Wars or
+     * other shared-JVS games.
+     */
+    private String resolvePreparedCompatibilityPreset() {
+        String preset = preparedWindowsLaunch.compatibilityPreset;
+        if (preparedWindowsLaunch.controlsProfileId == 9073 &&
+            "shared-jvs-dual-io".equals(preset))
+            return "gaia-attack4-media";
+        if (preparedWindowsLaunch.controlsProfileId == 9060 &&
+            "shared-jvs-dual-io".equals(preset))
+            return "haunted-museum2-media";
+        return preset;
     }
 
     private boolean isPreparedDosPathWithinDrive(String dosPath, boolean directory)

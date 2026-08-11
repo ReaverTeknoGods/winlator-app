@@ -33,7 +33,10 @@ public class AboutDialog extends ContentDialog {
                 "Arcade compatibility by <a href=\"https://github.com/teknogods/OpenParrot\">OpenParrot</a>",
                 "GLIBC Patches by (<a href=\"https://github.com/termux-pacman/glibc-packages\">Termux Pacman</a>)",
                 "Wine " + WineInfo.MAIN_WINE_VERSION + " (<a href=\"https://www.winehq.org\">WineHQ</a>)",
-                "Box64 " + DefaultVersion.BOX64 + " by <a href=\"https://github.com/ptitSeb/box64\">ptitseb</a>",
+                "Box64 " + DefaultVersion.BOX64 + " by " +
+                    "<a href=\"https://github.com/ptitSeb/box64\">ptitseb</a>",
+                "ffdshow tryouts rev4532 and its FFmpeg library for title-scoped Indeo 5 playback " +
+                    "(<a href=\"https://sourceforge.net/projects/ffdshow-tryout/\">ffdshow</a>)",
                 "Mesa Turnip " + DefaultVersion.TURNIP + ", Zink and VirGL " + DefaultVersion.VIRGL +
                     " (<a href=\"https://www.mesa3d.org\">Mesa 3D</a>)",
                 "DXVK " + DefaultVersion.MAJOR_DXVK + " / " + DefaultVersion.MINOR_DXVK +

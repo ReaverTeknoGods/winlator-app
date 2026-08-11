@@ -75,6 +75,8 @@ final class ActivityLaunchContract {
     static final String COMPATIBILITY_PRESET_EADP_DUAL_IO = "eadp-dual-io";
     static final String COMPATIBILITY_PRESET_SHARED_JVS_DUAL_IO = "shared-jvs-dual-io";
     static final String COMPATIBILITY_PRESET_GAIA_ATTACK4_MEDIA = "gaia-attack4-media";
+    static final String COMPATIBILITY_PRESET_HAUNTED_MUSEUM2_MEDIA =
+        "haunted-museum2-media";
     static final String COMPATIBILITY_PRESET_DIRECT_TOUCH_JVS = "direct-touch-jvs";
     static final String COMPATIBILITY_PRESET_BOX64_INTERPRETER = "box64-interpreter";
     static final String COMPATIBILITY_PRESET_PORTRAIT_WINDOW_COUNTER_CLOCKWISE =
@@ -305,6 +307,7 @@ final class ActivityLaunchContract {
             !COMPATIBILITY_PRESET_EADP_DUAL_IO.equals(value) &&
             !COMPATIBILITY_PRESET_SHARED_JVS_DUAL_IO.equals(value) &&
             !COMPATIBILITY_PRESET_GAIA_ATTACK4_MEDIA.equals(value) &&
+            !COMPATIBILITY_PRESET_HAUNTED_MUSEUM2_MEDIA.equals(value) &&
             !COMPATIBILITY_PRESET_DIRECT_TOUCH_JVS.equals(value) &&
             !COMPATIBILITY_PRESET_BOX64_INTERPRETER.equals(value) &&
             !COMPATIBILITY_PRESET_PORTRAIT_WINDOW_COUNTER_CLOCKWISE.equals(value) &&

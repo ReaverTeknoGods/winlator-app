@@ -1,0 +1,14 @@
+ffdshow tryouts revision 4532 (32-bit), released 2014-07-17
+
+Project: https://sourceforge.net/projects/ffdshow-tryout/
+Source browser: https://sourceforge.net/p/ffdshow-tryout/code/HEAD/tree/trunk/
+Source checkout: https://svn.code.sf.net/p/ffdshow-tryout/code/trunk/
+
+Runtime files included here:
+- ffdshow.ax
+- ffmpeg.dll
+- ff_vfw.dll
+
+The files were extracted from the project's official
+ffdshow_rev4532_20140717_clsid.exe installer. The bundled COPYING file contains
+the GNU General Public License terms distributed with that release.

@@ -8,27 +8,39 @@ import com.winlator.xconnector.XOutputStream;
 import com.winlator.xconnector.XStreamLock;
 import com.winlator.xserver.Keyboard;
 import com.winlator.xserver.XClient;
+import com.winlator.xserver.errors.BadValue;
 import com.winlator.xserver.errors.XRequestError;
 
 import java.io.IOException;
 
 public abstract class KeyboardRequests {
     public static void getKeyboardMapping(XClient client, XInputStream inputStream, XOutputStream outputStream) throws IOException, XRequestError {
-        byte firstKeycode = inputStream.readByte();
+        int firstKeycode = inputStream.readUnsignedByte();
         int count = inputStream.readUnsignedByte();
         inputStream.skip(2);
+
+        int firstIndex = (firstKeycode - Keyboard.MIN_KEYCODE) * KEYSYMS_PER_KEYCODE;
+        int keysymCount = count * KEYSYMS_PER_KEYCODE;
+        if (firstIndex < 0 || firstIndex + keysymCount > client.xServer.keyboard.keysyms.length)
+            throw new BadValue(firstKeycode);
 
         try (XStreamLock lock = outputStream.lock()) {
             outputStream.writeByte(RESPONSE_CODE_SUCCESS);
             outputStream.writeByte(KEYSYMS_PER_KEYCODE);
             outputStream.writeShort(client.getSequenceNumber());
-            outputStream.writeInt(count);
+            // The reply length is expressed in 4-byte units and includes every
+            // keysym, not merely the number of requested keycodes.  Returning
+            // only count entries while advertising two keysyms per keycode
+            // makes Xlib expose a truncated table; Wine then reads past it
+            // while constructing its keyboard layout.
+            outputStream.writeInt(keysymCount);
             outputStream.writePad(24);
 
-            int i = firstKeycode - Keyboard.MIN_KEYCODE;
-            while (count != 0) {
+            int i = firstIndex;
+            int remaining = keysymCount;
+            while (remaining != 0) {
                 outputStream.writeInt(client.xServer.keyboard.keysyms[i]);
-                count--;
+                remaining--;
                 i++;
             }
         }

@@ -9,7 +9,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 
-/** Prefix-local, exact-build KOF XII YV12 preference patch. */
+/** Exact-build YV12 output preference patch for affected Wine-GStreamer launches. */
 public final class WineGStreamerOutputFormatPatch {
     private static final long EXPECTED_LENGTH = 495616L;
     private static final int FORMAT_ORDER_OFFSET = 0x52280;
@@ -49,6 +49,31 @@ public final class WineGStreamerOutputFormatPatch {
         if (!isPatched(target)) return Result.UNSUPPORTED;
         writeAt(prefixDll, FORMAT_ORDER_OFFSET, ORIGINAL_FORMAT_ORDER);
         if (!isOriginal(read(prefixDll))) throw new IOException("The prefix-local Wine-GStreamer restore did not validate.");
+        return Result.RESTORED;
+    }
+
+    /**
+     * Configures the built-in PE image that Wine's experimental WoW64 loader
+     * actually maps. The image is accepted only when it is either the complete
+     * known Wine 10.10 binary or the exact result of this one table-order
+     * change, so a package update can never receive a blind offset patch.
+     */
+    public static Result configureInPlace(File wineDll, boolean enabled) throws IOException {
+        if (wineDll == null || !wineDll.isFile()) return Result.NOT_PRESENT;
+        byte[] image = read(wineDll);
+        if (enabled) {
+            if (isPatched(image)) return Result.ALREADY_APPLIED;
+            if (!isOriginal(image)) return Result.UNSUPPORTED;
+            writeAt(wineDll, FORMAT_ORDER_OFFSET, PATCHED_FORMAT_ORDER);
+            if (!isPatched(read(wineDll)))
+                throw new IOException("The active Wine-GStreamer patch did not validate.");
+            return Result.APPLIED;
+        }
+        if (isOriginal(image)) return Result.ALREADY_ORIGINAL;
+        if (!isPatched(image)) return Result.UNSUPPORTED;
+        writeAt(wineDll, FORMAT_ORDER_OFFSET, ORIGINAL_FORMAT_ORDER);
+        if (!isOriginal(read(wineDll)))
+            throw new IOException("The active Wine-GStreamer restore did not validate.");
         return Result.RESTORED;
     }
 

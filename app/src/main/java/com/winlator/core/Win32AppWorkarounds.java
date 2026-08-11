@@ -99,7 +99,7 @@ public class Win32AppWorkarounds {
     private void applyWineGStreamerWorkaround() {
         // 64-bit titles cannot use Winlator's optional 32-bit Microsoft WM
         // decoder archive. Restore Wine's media stack and expose the bundled
-        // native GStreamer plugins through the media-only Box64 executable.
+        // native GStreamer plugins through the corrected Box64 runtime.
         applyWorkaround((WinComponentsWorkaround) (wincomponents) -> {
             wincomponents.put("directshow", "0");
             wincomponents.put("wmdecoder", "0");
@@ -114,8 +114,9 @@ public class Win32AppWorkarounds {
                 activity.getRootFs().getRootDir().getPath()+"/usr/lib/gstreamer-1.0");
             // Box64 0.4.0 makes GTK a prerequisite of its GStreamer wrapper
             // even though GStreamer itself does not use it. The launcher
-            // applies a private, media-only copy fix and exposes the bundled
-            // native plugins to that wrapper. BOX64_NOGTK cannot be used:
+            // removes that dependency from the canonical runtime so Wine's
+            // helper processes inherit the fix, and exposes the bundled native
+            // plugins to that wrapper. BOX64_NOGTK cannot be used:
             // it also disables the GLib/GObject/GStreamer wrappers.
             envVars.put("TP_BOX64_WINEGSTREAMER_FIX", "1");
         });
@@ -135,11 +136,51 @@ public class Win32AppWorkarounds {
             applyWorkaround((EnvVarsWorkaround) (envVars) ->
                 envVars.put("WINEDLLOVERRIDES", "quartz=b"));
         }
+        else if (compatibilityPreset.equals("xact-local-register")) {
+            // GTI Club builds its WMV3 attract graph through DirectShow. Its
+            // custom renderer still uses Wine's graph manager, while the WMV
+            // splitter/decoder cross Wine's native GStreamer bridge. Prepare
+            // that bridge exactly as the other Wine-GStreamer titles do. The
+            // game also ships the exact XACT engine registered by the launch
+            // preflight, so retain its XAudio component installation.
+            applyWineGStreamerWorkaround();
+            applyWorkaround((WinComponentsWorkaround) (wincomponents) ->
+                wincomponents.put("xaudio", "1"));
+            applyWorkaround((EnvVarsWorkaround) (envVars) -> {
+                // Box64 registers the mirrored native plugins itself after
+                // gst_init_check. Scanning Winlator's native directory first
+                // loads gst-libav dynamically and the following static
+                // registration aborts on its process-global override table.
+                // Start GTI with an isolated empty registry so every plugin is
+                // registered exactly once by the media-only Box64 runtime.
+                envVars.put("GST_PLUGIN_SYSTEM_PATH_1_0", "");
+                envVars.put("GST_REGISTRY", "/tmp/gstreamer-gti-registry.bin");
+            });
+        }
         else if (compatibilityPreset.equals("wine-gstreamer")) {
             applyWineGStreamerWorkaround();
         }
         else if (compatibilityPreset.equals("kof-xii-wine-gstreamer")) {
-            applyWineGStreamerWorkaround();
+            // KOF XII does not merely need a decoder that can produce the
+            // movie's pixels. After RenderFile it explicitly searches the
+            // graph for a filter whose friendly name is "WMVideo Decoder DMO"
+            // and immediately opens that filter's "out0" pin. Wine-GStreamer
+            // decodes inside its splitter, so that hard-coded lookup returns
+            // null even when YV12 negotiation succeeds. Install Winlator's
+            // packaged 32-bit Microsoft ASF/WM decoder filters for this title,
+            // while retaining Wine's Quartz graph manager as used by the
+            // other legacy Type X media presets. Keep the legacy preset name
+            // for compatibility with already-released TPUI recipes.
+            applyWorkaround((WinComponentsWorkaround) (wincomponents) -> {
+                wincomponents.put("directshow", "1");
+                wincomponents.put("wmdecoder", "1");
+            });
+            applyWorkaround((EnvVarsWorkaround) (envVars) -> {
+                envVars.put("WINEDLLOVERRIDES", "quartz=b;winegstreamer=d");
+                envVars.remove("GST_PLUGIN_SYSTEM_PATH_1_0");
+                envVars.remove("GST_REGISTRY");
+                envVars.remove("TP_BOX64_WINEGSTREAMER_FIX");
+            });
         }
         else if (compatibilityPreset.equals("kof-mira-builtin-wined3d")) {
             // Some redistributed MIRA folders contain WineD3D 5.3's d3d8,
@@ -153,9 +194,52 @@ public class Win32AppWorkarounds {
         }
         else if (compatibilityPreset.equals("gaia-attack4-media")) {
             // Gaia Attack 4 mixes WMV3 and Indeo 5 AVI files in one title.
-            // Keep every movie on Wine's DirectShow/GStreamer path so the
-            // bundled libav plugin can decode both codecs consistently.
+            // Keep Wine's VfW/GStreamer path for WMV3. XServerDisplayActivity
+            // maps only IV50 to the packaged 32-bit ffdshow VfW driver before
+            // launch, so unrelated codecs and titles retain Wine's defaults.
             applyWineGStreamerWorkaround();
+            applyWorkaround((EnvVarsWorkaround) (envVars) ->
+                envVars.put(
+                    "WINEDLLOVERRIDES",
+                    "avifil32=b;msvfw32=b;ir50_32=d;winegstreamer=b;" +
+                    "wmadmod=b;wmasf=b;wmvcore=b;wmvdecod=b"));
+        }
+        else if (compatibilityPreset.equals("haunted-museum2-media")) {
+            // Haunted Museum II does not build a DirectShow graph for its
+            // cabinet movies. It imports AVIFile/AVIStreamGetFrame directly,
+            // which selects a VfW codec through msvfw32. Proper dumps include
+            // Intel's matching 32-bit Indeo 5 codec beside game.exe. Prefer
+            // that title-local decoder: Wine's builtin ir50_32 delegates to
+            // Wine-GStreamer and currently faults in the WoW64 Unix-call
+            // bridge during ICM_DECOMPRESS_BEGIN on Android. No codec payload
+            // is copied into or distributed by Winlator.
+            applyWorkaround((WinComponentsWorkaround) (wincomponents) -> {
+                wincomponents.put("directshow", "0");
+                wincomponents.put("wmdecoder", "0");
+            });
+            applyWorkaround((EnvVarsWorkaround) (envVars) -> {
+                envVars.put(
+                    "WINEDLLOVERRIDES",
+                    "avifil32=b;msvfw32=b;ir50_32=n;winegstreamer=d");
+                envVars.remove("GST_PLUGIN_SYSTEM_PATH_1_0");
+                envVars.remove("TP_BOX64_WINEGSTREAMER_FIX");
+            });
+        }
+        else if (compatibilityPreset.equals("music-gungun-native-fullscreen")) {
+            // Music GunGun 2 reaches its native fullscreen surface before it
+            // creates the WMV3 attract graph. The optional Windows filters can
+            // fail COM activation under WoW64 (0x8007000e), after which Quartz
+            // falls back to Wine-GStreamer on the ordinary Box64 executable
+            // and leaves the live game on a permanent black surface. Use the
+            // same corrected, media-only Box64 bridge as GTI Club and isolate
+            // its plugin registry so gst-libav is registered exactly once.
+            applyWineGStreamerWorkaround();
+            applyWorkaround((EnvVarsWorkaround) (envVars) -> {
+                envVars.put("GST_PLUGIN_SYSTEM_PATH_1_0", "");
+                envVars.put(
+                    "GST_REGISTRY",
+                    "/tmp/gstreamer-music-gungun2-registry.bin");
+            });
         }
         else if (compatibilityPreset.equals("post-start-remote-thread")) {
             // Guilty Gear Xrd REV2 APM3 reaches its startup movie immediately
@@ -187,13 +271,6 @@ public class Win32AppWorkarounds {
             // DirectDraw path without renaming or deleting the user's DLL.
             applyWorkaround((EnvVarsWorkaround) (envVars) ->
                 envVars.put("WINEDLLOVERRIDES", "ddraw=b"));
-        }
-        else if (compatibilityPreset.equals("xact-local-register")) {
-            // The game ships its exact XACT engine beside the executable. Keep
-            // the matching Winlator component archive installed, then let the
-            // launch preflight register that local COM server in this prefix.
-            applyWorkaround((WinComponentsWorkaround) (wincomponents) ->
-                wincomponents.put("xaudio", "1"));
         }
         else if (compatibilityPreset.equals("dirty-driving-fullscreen")) {
             // Dirty Drivin requests a single 0x32010000-byte allocation very

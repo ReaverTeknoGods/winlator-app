@@ -18,6 +18,7 @@ import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.concurrent.Executors;
 
@@ -25,6 +26,7 @@ public class WinHandler {
     private static final short SERVER_PORT = 7947;
     private static final short CLIENT_PORT = 7946;
     private static final byte DEFAULT_PACKET_LENGTH = 64;
+    private static final int MAX_DATAGRAM_LENGTH = 65507;
     private DatagramSocket socket;
     protected final ByteBuffer sendData = ByteBuffer.allocate(256).order(ByteOrder.LITTLE_ENDIAN);
     protected final ByteBuffer receiveData = ByteBuffer.allocate(DEFAULT_PACKET_LENGTH).order(ByteOrder.LITTLE_ENDIAN);
@@ -89,17 +91,20 @@ public class WinHandler {
         final String parameters = cmdList.length > 1 ? cmdList[1] : "";
 
         addAction(() -> {
-            byte[] filenameBytes = filename.getBytes();
-            byte[] parametersBytes = parameters.getBytes();
+            byte[] filenameBytes = filename.getBytes(StandardCharsets.UTF_8);
+            byte[] parametersBytes = parameters.getBytes(StandardCharsets.UTF_8);
+            int packetLength = 13 + filenameBytes.length + parametersBytes.length;
+            if (packetLength > MAX_DATAGRAM_LENGTH) return;
 
-            sendData.rewind();
-            sendData.put(RequestCodes.EXEC);
-            sendData.putInt(filenameBytes.length + parametersBytes.length + 8);
-            sendData.putInt(filenameBytes.length);
-            sendData.putInt(parametersBytes.length);
-            sendData.put(filenameBytes);
-            sendData.put(parametersBytes);
-            sendPacket(CLIENT_PORT);
+            ByteBuffer packet = ByteBuffer.allocate(packetLength)
+                .order(ByteOrder.LITTLE_ENDIAN);
+            packet.put(RequestCodes.EXEC);
+            packet.putInt(filenameBytes.length + parametersBytes.length + 8);
+            packet.putInt(filenameBytes.length);
+            packet.putInt(parametersBytes.length);
+            packet.put(filenameBytes);
+            packet.put(parametersBytes);
+            sendPacket(CLIENT_PORT, packet.array());
         });
     }
 
