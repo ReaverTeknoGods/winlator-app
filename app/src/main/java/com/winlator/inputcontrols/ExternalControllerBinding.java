@@ -9,6 +9,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 public class ExternalControllerBinding {
+    private static final int GENERIC_AXIS_BASE = 1000;
     public static final byte AXIS_X_NEGATIVE = -1;
     public static final byte AXIS_X_POSITIVE = -2;
     public static final byte AXIS_Y_NEGATIVE = -3;
@@ -69,6 +70,11 @@ public class ExternalControllerBinding {
             case AXIS_RZ_POSITIVE:
                 return "AXIS RZ+";
             default:
+                if (keyCode <= -GENERIC_AXIS_BASE) {
+                    int encoded = -keyCode - GENERIC_AXIS_BASE;
+                    return MotionEvent.axisToString(encoded / 2).replace("AXIS_", "AXIS ") +
+                            (encoded % 2 == 1 ? "+" : "-");
+                }
                 return KeyEvent.keyCodeToString(keyCode).replace("KEYCODE_", "").replace("_", " ");
         }
     }
@@ -88,7 +94,11 @@ public class ExternalControllerBinding {
             case MotionEvent.AXIS_HAT_Y:
                 return sign > 0 ? KeyEvent.KEYCODE_DPAD_DOWN : KeyEvent.KEYCODE_DPAD_UP;
             default:
-                return KeyEvent.KEYCODE_UNKNOWN;
+                return -(GENERIC_AXIS_BASE + axis * 2 + (sign > 0 ? 1 : 0));
         }
+    }
+
+    public static boolean isGenericAxisCode(int keyCode) {
+        return keyCode <= -GENERIC_AXIS_BASE;
     }
 }

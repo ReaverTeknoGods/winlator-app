@@ -42,6 +42,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.HashMap;
 
 public class ExternalControllerBindingsActivity extends AppCompatActivity {
     private TextView emptyTextView;
@@ -52,6 +53,7 @@ public class ExternalControllerBindingsActivity extends AppCompatActivity {
     private boolean teknoParrotNativeControls;
     private final ArrayList<Binding> arcadeActionBindings = new ArrayList<>();
     private final ArrayList<String> arcadeActionLabels = new ArrayList<>();
+    private final Map<Integer, Float> previousExtraAxes = new HashMap<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -274,6 +276,28 @@ public class ExternalControllerBindingsActivity extends AppCompatActivity {
         updateControllerBinding(keyCode, binding);
     }
 
+    private void processExtraAxes(MotionEvent event) {
+        if (event.getActionMasked() != MotionEvent.ACTION_MOVE || event.getDevice() == null)
+            return;
+        for (android.view.InputDevice.MotionRange range : event.getDevice().getMotionRanges()) {
+            int axis = range.getAxis();
+            if (axis == MotionEvent.AXIS_X || axis == MotionEvent.AXIS_Y ||
+                    axis == MotionEvent.AXIS_Z || axis == MotionEvent.AXIS_RZ ||
+                    axis == MotionEvent.AXIS_HAT_X || axis == MotionEvent.AXIS_HAT_Y ||
+                    axis == MotionEvent.AXIS_LTRIGGER || axis == MotionEvent.AXIS_RTRIGGER ||
+                    axis == MotionEvent.AXIS_BRAKE || axis == MotionEvent.AXIS_GAS)
+                continue;
+            float value = ExternalController.getCenteredAxis(event, axis, -1);
+            Float previous = previousExtraAxes.put(axis, value);
+            if (previous == null || Math.abs(value - previous) < 0.5f || Math.abs(value) < 0.5f)
+                continue;
+            updateControllerBinding(
+                    ExternalControllerBinding.getKeyCodeForAxis(axis, Mathf.sign(value)),
+                    Binding.NONE);
+            return;
+        }
+    }
+
     @Override
     public boolean dispatchGenericMotionEvent(MotionEvent event) {
         if (event.getDeviceId() == controller.getDeviceId() && controller.updateStateFromMotionEvent(event)) {
@@ -281,6 +305,7 @@ public class ExternalControllerBindingsActivity extends AppCompatActivity {
             if (state.isPressed(ExternalController.IDX_BUTTON_L2)) updateControllerBinding(KeyEvent.KEYCODE_BUTTON_L2, Binding.NONE);
             if (state.isPressed(ExternalController.IDX_BUTTON_R2)) updateControllerBinding(KeyEvent.KEYCODE_BUTTON_R2, Binding.NONE);
             processJoystickInput();
+            processExtraAxes(event);
             return true;
         }
         return super.dispatchGenericMotionEvent(event);

@@ -350,6 +350,22 @@ public class InputControlsView extends View {
                 if (controllerBinding != null) handleInputEvent(controllerBinding.getBinding(), state.isPressed(ExternalController.IDX_BUTTON_R2));
 
                 processJoystickInput(controller);
+                for (android.view.InputDevice.MotionRange range : event.getDevice().getMotionRanges()) {
+                    int axis = range.getAxis();
+                    if (axis == MotionEvent.AXIS_X || axis == MotionEvent.AXIS_Y ||
+                            axis == MotionEvent.AXIS_Z || axis == MotionEvent.AXIS_RZ ||
+                            axis == MotionEvent.AXIS_HAT_X || axis == MotionEvent.AXIS_HAT_Y ||
+                            axis == MotionEvent.AXIS_LTRIGGER || axis == MotionEvent.AXIS_RTRIGGER ||
+                            axis == MotionEvent.AXIS_BRAKE || axis == MotionEvent.AXIS_GAS)
+                        continue;
+                    float value = ExternalController.getCenteredAxis(event, axis, -1);
+                    for (byte sign : new byte[]{-1, 1}) {
+                        int code = ExternalControllerBinding.getKeyCodeForAxis(axis, sign);
+                        ExternalControllerBinding extraBinding = controller.getControllerBinding(code);
+                        if (extraBinding != null)
+                            handleInputEvent(extraBinding.getBinding(), sign * value > 0.5f);
+                    }
+                }
                 return true;
             }
         }

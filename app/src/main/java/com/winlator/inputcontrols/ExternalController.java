@@ -270,15 +270,11 @@ public class ExternalController implements GamepadSlot {
 
     public static boolean isGameController(InputDevice device) {
         if (device == null) return false;
-        String name = device.getName();
-        if (name != null) {
-            String lowerName = name.toLowerCase();
-            if (lowerName.contains("uinput-fpc") || lowerName.contains("goodix_fp") || lowerName.contains("uinput-")) {
-                return false;
-            }
-        }
         int sources = device.getSources();
-        return !device.isVirtual() && ((sources & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD ||
+        // Android can expose USB, Bluetooth and forwarded controllers as
+        // virtual/uinput devices. Their source flags identify them reliably;
+        // filtering by name or isVirtual hid usable controllers from the editor.
+        return ((sources & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD ||
                (sources & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK);
     }
 

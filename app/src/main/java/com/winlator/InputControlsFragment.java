@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
+import android.hardware.input.InputManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
@@ -56,6 +57,19 @@ public class InputControlsFragment extends Fragment {
     private final int selectedProfileId;
     private final boolean teknoParrotNativeControls;
     private final String teknoParrotProfileName;
+    private InputManager inputManager;
+    private final InputManager.InputDeviceListener inputDeviceListener = new InputManager.InputDeviceListener() {
+        @Override public void onInputDeviceAdded(int deviceId) { refreshConnectedControllers(); }
+        @Override public void onInputDeviceRemoved(int deviceId) { refreshConnectedControllers(); }
+        @Override public void onInputDeviceChanged(int deviceId) { refreshConnectedControllers(); }
+    };
+
+    private void refreshConnectedControllers() {
+        View view = getView();
+        if (view != null) view.post(() -> {
+            if (isAdded() && getView() == view) loadExternalControllers(view);
+        });
+    }
 
     public InputControlsFragment(
             int selectedProfileId,
@@ -307,7 +321,16 @@ public class InputControlsFragment extends Fragment {
     @Override
     public void onStart() {
         super.onStart();
+        inputManager = (InputManager) requireContext().getSystemService(Context.INPUT_SERVICE);
+        if (inputManager != null) inputManager.registerInputDeviceListener(inputDeviceListener, null);
         if (updateLayout != null) updateLayout.run();
+    }
+
+    @Override
+    public void onStop() {
+        if (inputManager != null) inputManager.unregisterInputDeviceListener(inputDeviceListener);
+        inputManager = null;
+        super.onStop();
     }
 
     private void loadProfileSpinner(Spinner spinner) {
