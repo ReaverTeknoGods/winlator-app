@@ -420,7 +420,11 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
     private void extractBox64File() {
         Context context = environment.getContext();
         SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(context);
-        String box64Version = preferences.getString("box64_version", DefaultVersion.BOX64);
+        // The media workaround patches a verified instruction in Box64 0.4.0.
+        // Keep that title-scoped compatibility path on its known binary while
+        // ordinary sessions use the upgraded default or the user's selection.
+        String box64Version = usesWineGStreamerBox64() ? "0.4.0"
+            : preferences.getString("box64_version", DefaultVersion.BOX64);
         String currentBox64Version = preferences.getString("current_box64_version", "");
 
         if (!box64Version.equals(currentBox64Version)) {
@@ -445,6 +449,7 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         envVars.put("BOX64_NOBANNER", box64Logs >= 1 ? "0" : "1");
         envVars.put("BOX64_DYNAREC", "1");
         envVars.put("BOX64_UNITYPLAYER", "0");
+        envVars.put("BOX64_DYNACACHE", "0");
 
         if (box64Logs >= 1) {
             envVars.put("BOX64_LOG", "1");

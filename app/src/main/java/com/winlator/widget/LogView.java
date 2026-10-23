@@ -84,6 +84,10 @@ public class LogView extends View {
         else printStream = null;
     }
 
+    public boolean isSaveToFile() {
+        return printStream != null;
+    }
+
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         super.onSizeChanged(w, h, oldw, oldh);

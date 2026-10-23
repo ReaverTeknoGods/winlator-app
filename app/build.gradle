@@ -5,9 +5,9 @@ def releaseKeystorePath = System.getenv('TEKNOPARROT_RELEASE_KEYSTORE')
 def releaseStorePassword = System.getenv('TEKNOPARROT_RELEASE_STORE_PASSWORD')
 def releaseKeyAlias = System.getenv('TEKNOPARROT_RELEASE_KEY_ALIAS')
 def releaseKeyPassword = System.getenv('TEKNOPARROT_RELEASE_KEY_PASSWORD')
-def androidVersionName = System.getenv('TEKNOPARROT_ANDROID_VERSION_NAME') ?: '11.1-tp28'
+def androidVersionName = System.getenv('TEKNOPARROT_ANDROID_VERSION_NAME') ?: '11.2-tp29'
 def androidVersionCode = Integer.parseInt(
-    System.getenv('TEKNOPARROT_ANDROID_VERSION_CODE') ?: '54')
+    System.getenv('TEKNOPARROT_ANDROID_VERSION_CODE') ?: '55')
 def teknoParrotRepositoryRoot = file(
     System.getenv('TEKNOPARROT_REPOSITORY_ROOT') ?: '../..')
 def teknoParrotFixtureSource = new File(
@@ -32,7 +32,11 @@ def teknoParrotFixtureNames = [
 ]
 
 android {
-    compileSdk 34
+    namespace 'com.winlator'
+    buildFeatures {
+        buildConfig true
+    }
+    compileSdk 35
 
     defaultConfig {
         applicationId 'com.teknoparrot.winlator'
@@ -255,4 +259,5 @@ dependencies {
     implementation 'org.tukaani:xz:1.7'
     implementation 'org.apache.commons:commons-compress:1.20'
     testImplementation 'junit:junit:4.13.2'
+    implementation 'androidx.lifecycle:lifecycle-process:2.5.1'
 }

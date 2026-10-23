@@ -3,6 +3,7 @@ apply plugin: 'com.android.application'
 def sharedKeystorePath = System.getenv('TEKNOPARROT_DEBUG_KEYSTORE')
 
 android {
+    namespace 'com.winlator.teknoparrot.stub'
     compileSdk 34
 
     defaultConfig {

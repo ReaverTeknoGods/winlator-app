@@ -27,16 +27,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
 
 public abstract class RootFSInstaller {
-    // Version 22 forces existing installations to unpack the current rootfs.
-    // Its GStreamer libav plugin includes the Indeo 4/5 decoders that were
-    // absent from some already-installed version-21 root filesystems.
-    // Version 23 also refreshes existing main-Wine prefixes. Version 22
-    // updated the immutable Wine/GStreamer payload but left the PE-side
-    // winegstreamer DLLs in already-created prefixes at their older build.
-    // Mixing those builds leaves the WoW64 Unix-call table out of sync and
-    // breaks Indeo/WMV decoding even though every required plugin is present.
-    public static final byte LATEST_VERSION = 23;
-    public static final byte UPDATE_WINEPREFIX_VERSION = 22; // set it if main wine version change
+    // Refresh both the rootfs and existing main-Wine prefixes for the
+    // Winlator 11.2 payload. Version 23 was already used by our media fixes.
+    public static final byte LATEST_VERSION = 24;
+    public static final byte UPDATE_WINEPREFIX_VERSION = 23;
     public static final String FILENAME = "rootfs.tzst";
 
     private static void resetContainerRFSVersions(Context context) {
@@ -58,7 +52,7 @@ public abstract class RootFSInstaller {
         RootFS rootFS = RootFS.find(activity);
         final File rootDir = rootFS.getRootDir();
 
-        SettingsFragment.resetBox64Version(activity);
+        SettingsFragment.resetPreferenceVersions(activity);
 
         final DownloadProgressDialog dialog = new DownloadProgressDialog(activity);
         dialog.show(R.string.installing_system_files);
@@ -101,7 +95,7 @@ public abstract class RootFSInstaller {
         if (rootFS.isValid() && rootFS.getVersion() >= LATEST_VERSION) return;
 
         final File rootDir = rootFS.getRootDir();
-        SettingsFragment.resetBox64Version(context);
+        SettingsFragment.resetPreferenceVersions(context);
         clearRootDir(rootDir);
         boolean success = TarCompressorUtils.extract(
             TarCompressorUtils.Type.ZSTD, context, FILENAME, rootDir);

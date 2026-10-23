@@ -1,7 +1,12 @@
 apply plugin: 'com.android.library'
 
 android {
+    namespace 'com.winlator.teknoparrot'
     compileSdk 34
+
+    buildFeatures {
+        aidl true
+    }
 
     defaultConfig {
         minSdkVersion 26

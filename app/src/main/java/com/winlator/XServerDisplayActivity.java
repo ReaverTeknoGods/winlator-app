@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.wifi.WifiManager;
 import android.os.Build;
+import android.content.res.Configuration;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.util.Log;
@@ -85,12 +86,12 @@ import com.winlator.teknoparrot.ForwardedInputSessionRegistry;
 import com.winlator.teknoparrot.PreparedSessionActivityLauncher;
 import com.winlator.teknoparrot.PreparedWindowsLaunchRegistry;
 import com.winlator.teknoparrot.TeknoParrotBridgeService;
+import com.winlator.services.ForegroundService;
 import com.winlator.widget.FrameRating;
 import com.winlator.widget.InputControlsView;
 import com.winlator.widget.MagnifierView;
 import com.winlator.widget.TouchpadView;
 import com.winlator.widget.XServerView;
-import com.winlator.winhandler.GamepadHandler;
 import com.winlator.winhandler.TaskManagerDialog;
 import com.winlator.winhandler.WinHandler;
 import com.winlator.xconnector.UnixSocketConfig;
@@ -179,7 +180,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private boolean capturePointerOnExternalMouse = true;
     private MagnifierView magnifierView;
     private DebugDialog debugDialog;
-    private int frameRatingWindowId = -1;
+    public int frameRatingWindowId = -1;
     private Win32AppWorkarounds win32AppWorkarounds;
     private String screenEffectProfile;
     private ForwardedInputActivityBridge forwardedInputBridge;
@@ -234,6 +235,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             scheduleForwardedInputActivityDiagnostic(0);
             return;
         }
+        ForegroundService.startSession(this);
 
         final PreloaderDialog preloaderDialog = new PreloaderDialog(this);
         preferences = PreferenceManager.getDefaultSharedPreferences(this);
@@ -299,7 +301,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             String dxwrapperConfig = container.getDXWrapperConfig();
             String graphicsDriverConfig = container.getGraphicsDriverConfig();
             audioDriverConfig = new KeyValueSet(container.getAudioDriverConfig());
-            screenInfo = new ScreenInfo(container.getScreenSize());
+            screenInfo = resolveScreenInfo(container.getScreenSize());
 
             // A managed TeknoParrot launch carries a per-game render size. Use
             // it for the Wine/X11 desktop as well as teknoparrot.ini; otherwise
@@ -330,7 +332,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 dxwrapperConfig = shortcut.getExtra("dxwrapperConfig", container.getDXWrapperConfig());
                 graphicsDriverConfig = shortcut.getExtra("graphicsDriverConfig", container.getGraphicsDriverConfig());
                 audioDriverConfig = new KeyValueSet(shortcut.getExtra("audioDriverConfig", container.getAudioDriverConfig()));
-                screenInfo = new ScreenInfo(shortcut.getExtra("screenSize", container.getScreenSize()));
+                screenInfo = resolveScreenInfo(shortcut.getExtra("screenSize", container.getScreenSize()));
 
                 String dinputMapperType = shortcut.getExtra("dinputMapperType");
                 if (!dinputMapperType.isEmpty()) winHandler.gamepadHandler.setDInputMapperType(Byte.parseByte(dinputMapperType));
@@ -547,11 +549,12 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             forwardedInputBridge.onWindowFocusChanged(hasFocus);
 
         if (hasFocus && !forwardedInputActivityDiagnostic) {
-            // Permission sheets, controller editors, and the Android task
-            // switcher can make gesture/navigation bars visible again. Restore
-            // immersive mode whenever the managed game regains focus.
             AppUtils.hideSystemUI(this);
-            if (capturePointerOnExternalMouse) touchpadView.requestPointerCapture();
+            if (capturePointerOnExternalMouse) {
+                // Captured events are delivered to the focused view.
+                View captureView = inputControlsView.getVisibility() == View.VISIBLE ? inputControlsView : touchpadView;
+                if (captureView.requestFocus()) captureView.requestPointerCapture();
+            }
 
             if (winHandler != null && clipboardManager != null && clipboardManager.hasPrimaryClip()) {
                 ClipData primaryClip = clipboardManager.getPrimaryClip();
@@ -570,16 +573,24 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             xServerView.onResume();
             environment.onResume();
         }
+        ForegroundService.onResumeSession(this);
     }
 
     @Override
     public void onPause() {
         if (forwardedInputBridge != null) forwardedInputBridge.onPause();
+        ForegroundService.onPauseSession(this);
         super.onPause();
         if (environment != null && !isInPictureInPictureMode()) {
             environment.onPause();
             xServerView.onPause();
         }
+    }
+
+    @Override
+    public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode, Configuration newConfig) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig);
+        ForegroundService.setPipMode(isInPictureInPictureMode);
     }
 
     @Override
@@ -604,6 +615,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             TeknoParrotBridgeService.releasePreparedSession(this, forwardedSessionId);
         releasePreparedMulticastLock();
         ProcessHelper.setOutputSuppressed(false);
+        ForegroundService.stopSession(this);
         super.onDestroy();
     }
 
@@ -995,6 +1007,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             AppUtils.restartApplication(this, options);
         }
         else AppUtils.restartApplication(this);
+        ForegroundService.stopSession(this);
     }
 
     /**
@@ -2095,6 +2108,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         inputControlsView = new InputControlsView(this);
         inputControlsView.setOverlayOpacity(preferences.getFloat("overlay_opacity", InputControlsView.DEFAULT_OVERLAY_OPACITY));
         inputControlsView.setTouchpadView(touchpadView);
+        if (capturePointerOnExternalMouse) {
+            inputControlsView.setOnCapturedPointerListener((view, event) ->
+                touchpadView.isEnabled() && touchpadView.onCapturedPointer(view, event));
+        }
         inputControlsView.setXServer(xServer);
         if (forwardedInputBridge != null)
             inputControlsView.setInputEventListener(this::forwardVirtualTeknoParrotInput);
@@ -2498,7 +2515,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         else cacheId += graphicsDriver[0]+"-"+DefaultVersion.valueOf(graphicsDriver[0]);
         cacheId += "-"+graphicsDriver[1]+"-"+DefaultVersion.valueOf(graphicsDriver[1]);
 
-        boolean changed = !cacheId.equals(container.getExtra("graphicsDriver"));
+        String currentGraphicsDriver = preferences.getString("current_graphics_driver", "");
+        boolean changed = !cacheId.equals(currentGraphicsDriver);
         File rootDir = rootFS.getRootDir();
         File libDir = rootFS.getLibDir();
 
@@ -2511,18 +2529,14 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             FileUtils.delete(vulkanICDDir);
             vulkanICDDir.mkdirs();
 
-            container.putExtra("graphicsDriver", cacheId);
-            container.saveData();
+            preferences.edit().putString("current_graphics_driver", cacheId).apply();
         }
 
         if (graphicsDriver[0].equals(GraphicsDrivers.TURNIP)) {
-            // Zink is OpenGL-over-Vulkan. DXVK's maxFrameRate setting cannot
-            // throttle it, so prepared arcade launches use FIFO + vblank.
-            // Ordinary Winlator sessions retain the original uncapped mode.
-            envVars.put(
-                "MESA_VK_WSI_PRESENT_MODE",
-                frameRateLimited ? "fifo" : "mailbox");
             TurnipConfigDialog.setEnvVars(this, graphicsDriverConfig[0], envVars);
+            // Preserve the title recipe frame limit for OpenGL-over-Vulkan.
+            // Unmanaged sessions retain the upstream presentation setting.
+            if (frameRateLimited) envVars.put("MESA_VK_WSI_PRESENT_MODE", "fifo");
 
             if (changed) {
                 String version = graphicsDriverConfig[0].get("version", DefaultVersion.TURNIP);
@@ -4703,6 +4717,14 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         this.screenInfo = screenInfo;
     }
 
+    private ScreenInfo resolveScreenInfo(String value) {
+        if (!value.equals("native")) return new ScreenInfo(value);
+
+        int width = AppUtils.getScreenWidth();
+        int height = AppUtils.getScreenHeight();
+        return new ScreenInfo(width - (width % 2), height - (height % 2));
+    }
+
     public String getWinComponents() {
         return wincomponents;
     }
@@ -4746,19 +4768,27 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "rootfs_patches.tzst", rootDir);
         TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "pulseaudio.tzst", new File(getFilesDir(), "pulseaudio"));
         WineUtils.applySystemTweaks(this, wineInfo);
-        container.putExtra("graphicsDriver", null);
         container.putExtra("dxwrapper", null);
         container.putExtra("desktopTheme", null);
-        SettingsFragment.resetBox64Version(this);
+        SettingsFragment.resetPreferenceVersions(this);
     }
 
-    private void changeFrameRatingVisibility(Window window, boolean visible) {
+    public void changeFrameRatingVisibility(Window window, boolean visible) {
         if (frameRating == null) return;
         if (visible) {
-            Window child = window.getChildCount() > 0 ? window.getChildren().get(0) : null;
+            if (window.id == frameRatingWindowId) return;
+            Window child = window.getChildAt(0);
             boolean viewable = window.attributes.isMapped() && window.getWidth() >= ScreenInfo.MIN_WIDTH && window.getHeight() >= ScreenInfo.MIN_HEIGHT;
+            Window frameRatingWindow = null;
             if (viewable && (window.isSurface() || (child != null && child.isSurface()))) {
-                Window frameRatingWindow = window.isSurface() ? window : child;
+                frameRatingWindow = window.isSurface() ? window : child;
+            }
+            else if (window.isSurface() && !window.isApplicationWindow()) {
+                Window parent = window.getParent();
+                if (parent != null && parent.isApplicationWindow() && !parent.isSurface()) frameRatingWindow = window;
+            }
+
+            if (frameRatingWindow != null) {
                 if (frameRating.getMode() == FrameRating.Mode.FULL) {
                     Property gpuInfo = frameRatingWindow.getProperty(Atom._NET_WM_GPU_INFO);
                     frameRating.setGPUInfo(gpuInfo != null ? new String(gpuInfo.data.array()) : "N/A");

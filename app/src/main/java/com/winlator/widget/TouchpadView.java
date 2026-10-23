@@ -49,12 +49,14 @@ public class TouchpadView extends View implements View.OnCapturedPointerListener
         setBackground(createTransparentBackground());
         setClickable(true);
         setFocusable(true);
-        setFocusableInTouchMode(false);
+        setFocusableInTouchMode(capturePointerOnExternalMouse);
         updateXform(AppUtils.getScreenWidth(), AppUtils.getScreenHeight(), xServer.screenInfo.width, xServer.screenInfo.height);
 
         if (capturePointerOnExternalMouse) {
             setOnCapturedPointerListener(this);
-            setOnClickListener(view -> requestPointerCapture());
+            setOnClickListener(view -> {
+                if (requestFocus()) requestPointerCapture();
+            });
         }
     }
 

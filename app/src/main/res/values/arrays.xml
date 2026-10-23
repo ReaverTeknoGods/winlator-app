@@ -2,6 +2,7 @@
 <resources>
     <string-array name="screen_size_entries">
         <item>@string/custom</item>
+        <item>@string/native_resolution</item>
         <item>640x360 (16:9)</item>
         <item>640x480 (4:3)</item>
         <item>800x600 (4:3)</item>
@@ -151,5 +152,10 @@
         <item>Opaque FD</item>
         <item>DMA Buffer</item>
         <item>Native Hardware Buffer</item>
+    </string-array>
+    <string-array name="present_mode_entries">
+        <item>immediate</item>
+        <item>mailbox</item>
+        <item>fifo</item>
     </string-array>
 </resources>
