@@ -7,6 +7,15 @@ implementation. OpenParrot replaces the 106 separate entry points with its
 existing APM API hooks before game code uses them; the zero-return functions
 alone do not implement inputs, accounting, networking or APM behavior.
 
+## License
+
+The copied `APMExportProxy64.cpp` and `APMExportProxy64.def` sources, and the
+`apm.dll` built from them, retain OpenParrot's GNU General Public License
+version 3. The complete license is included in [COPYING](COPYING). This
+component's GPLv3 license is separate from the repository's root LGPLv2.1
+license. The original source revision is identified above; the corresponding
+source and rebuild instructions are included in this directory.
+
 The Android candidate asset is exactly 12,288 bytes, AMD64/PE32+, SHA256
 `b5601e4e27fa314c3176c2503b8518e5e3736e383c36e1b35bf15d61b2077ec6`.
 Its 106 export names, ordinals and distinct RVAs match the supplied original
