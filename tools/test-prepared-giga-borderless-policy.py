@@ -21,16 +21,16 @@ def method(text, signature):
 
 def run(root):
     source = (root / 'app/src/main/java/com/winlator/XServerDisplayActivity.java').read_text(encoding='utf-8')
-    helper = method(source, '    private boolean shouldUsePreparedGigaBorderlessAspectFit()')
+    helper = method(source, '    private boolean shouldUsePreparedPortraitBorderlessAspectFit()')
     start = source.index('                boolean classic640Client =')
     end = source.index('                envVars.remove("TP_CRUISN_USE_REGAL");', start)
     policy = source[start:end]
     start = source.index('            boolean useNativeGuestFullscreen =')
     end = source.index('            List<String> result =', start)
     windowed = source[start:end] + '\nreturn windowedValue;'
-    assert policy.count('shouldUsePreparedGigaBorderlessAspectFit()') == 1
+    assert policy.count('shouldUsePreparedPortraitBorderlessAspectFit()') == 1
     assert 'if (classic640Client || "centered".equals(preparedWindowsLaunch.displayMode))' in policy
-    assert 'else if (shouldUsePreparedGigaBorderlessAspectFit())' in policy
+    assert 'else if (shouldUsePreparedPortraitBorderlessAspectFit())' in policy
 
     checks = r'''
 import java.util.*;
@@ -55,8 +55,8 @@ public class GigaPolicyChecks {
    activity.envVars.put("unrelated","preserve");activity.envVars.put("TP_CENTER_WINDOW","stale");activity.envVars.put("TP_BORDERLESS_WINDOW","stale");activity.envVars.put("TP_ANDROID_CLASSIC_640_CLIENT","stale");
    activity.apply();combinations++;
    boolean classic="classic-640-client".equals(preset);
-   boolean gigaFit=production&&id==9014&&"portrait-window-counter-clockwise".equals(preset)&&"aspect-fit".equals(mode)&&loader.equalsIgnoreCase(exe);
-   boolean borderless=classic||"centered".equals(mode)||gigaFit;
+   boolean portraitFit=production&&(id==9014||id==9013)&&"portrait-window-counter-clockwise".equals(preset)&&"aspect-fit".equals(mode)&&loader.equalsIgnoreCase(exe);
+   boolean borderless=classic||"centered".equals(mode)||portraitFit;
    yes(borderless?"1".equals(activity.envVars.get("TP_BORDERLESS_WINDOW")):!activity.envVars.containsKey("TP_BORDERLESS_WINDOW"),"exact borderless policy");
    yes(borderless?"1".equals(activity.envVars.get("TP_CENTER_WINDOW")):!activity.envVars.containsKey("TP_CENTER_WINDOW"),"exact centering policy");
    yes(classic?"1".equals(activity.envVars.get("TP_ANDROID_CLASSIC_640_CLIENT")):!activity.envVars.containsKey("TP_ANDROID_CLASSIC_640_CLIENT"),"classic opt-in unchanged");
@@ -64,12 +64,12 @@ public class GigaPolicyChecks {
    boolean nativePreset="en-eins-native-fullscreen".equals(preset)||"music-gungun-native-fullscreen".equals(preset);
    String expectedWindowed=classic?"1":("fullscreen".equals(mode)||nativePreset)?"0":"1";
    yes(expectedWindowed.equals(activity.windowed()),"guest native fullscreen/windowed choice unchanged");
-   if(gigaFit){newRoutes++;yes("1".equals(activity.windowed()),"Giga Fit screen remains guest windowed");}
-   if(id==9013&&!classic&&"aspect-fit".equals(mode))yes(!borderless,"RaidenIII/IV Fit screen unchanged");
+   if(portraitFit){newRoutes++;yes("1".equals(activity.windowed()),"Giga/Raiden Fit screen remains guest windowed");}
+   if(id==9013&&!classic&&"aspect-fit".equals(mode)&&!portraitFit)yes(!borderless,"other 9013 Fit screen combinations unchanged");
   }
-  ActivityPolicy absent=new ActivityPolicy();yes(!absent.shouldUsePreparedGigaBorderlessAspectFit(),"missing launch excluded");
-  yes(newRoutes==2,"only exact loader casing variants add borderless policy");
-  System.out.println("Giga borderless policy PASS: "+checks+" assertions; "+combinations+" combinations; "+newRoutes+" exact new route variants");
+  ActivityPolicy absent=new ActivityPolicy();yes(!absent.shouldUsePreparedPortraitBorderlessAspectFit(),"missing launch excluded");
+  yes(newRoutes==4,"only exact Giga/Raiden profile and loader casing variants add borderless policy");
+  System.out.println("Giga/Raiden borderless policy PASS: "+checks+" assertions; "+combinations+" combinations; "+newRoutes+" exact route variants");
  }
 }
 '''.replace('POLICY', policy).replace('HELPER', helper.replace('private boolean', 'boolean')).replace('WINDOWED', windowed)

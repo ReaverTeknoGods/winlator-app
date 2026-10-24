@@ -1629,7 +1629,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                     envVars.put("TP_BORDERLESS_WINDOW", "1");
                     envVars.put("TP_CENTER_WINDOW", "1");
                 }
-                else if (shouldUsePreparedGigaBorderlessAspectFit()) {
+                else if (shouldUsePreparedPortraitBorderlessAspectFit()) {
                     envVars.put("TP_BORDERLESS_WINDOW", "1");
                     envVars.put("TP_CENTER_WINDOW", "1");
                 }
@@ -2254,11 +2254,12 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             "E:\\TeknoParrotRuntime\\OpenParrotWin32Legacy\\OpenParrotLoader.exe".equalsIgnoreCase(executable);
     }
 
-    private boolean shouldUsePreparedGigaBorderlessAspectFit() {
+    private boolean shouldUsePreparedPortraitBorderlessAspectFit() {
         // Fit screen retains the working windowed D3D path. Strip the same
         // owned Win32 chrome as centered mode, without changing client size.
         return preparedWindowsLaunch != null && preparedWindowsLaunch.productionBridge &&
-            preparedWindowsLaunch.controlsProfileId == 9014 &&
+            (preparedWindowsLaunch.controlsProfileId == 9014 ||
+             preparedWindowsLaunch.controlsProfileId == 9013) &&
             "portrait-window-counter-clockwise".equals(preparedWindowsLaunch.compatibilityPreset) &&
             "aspect-fit".equals(preparedWindowsLaunch.displayMode) &&
             "E:\\TeknoParrotRuntime\\OpenParrotWin32\\OpenParrotLoader.exe".equalsIgnoreCase(
@@ -2301,6 +2302,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         globalCursorSpeed = preferences.getFloat("cursor_speed", 1.0f);
         capturePointerOnExternalMouse = preferences.getBoolean("capture_pointer_on_external_mouse", true);
         touchpadView = new TouchpadView(this, xServer, capturePointerOnExternalMouse);
+        applyPreparedTouchpadPolicy();
         touchpadView.setSensitivity(globalCursorSpeed);
         touchpadView.setMoveCursorToTouchpoint(preferences.getBoolean("move_cursor_to_touchpoint", false));
         touchpadView.setFourFingersTapCallback(() -> {
@@ -2590,19 +2592,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         touchpadView.setPointerButtonRightEnabled(false);
 
         GLRenderer renderer = xServerView.getRenderer();
-        boolean usesDirectCabinetTouch = preparedWindowsLaunch != null &&
-            (usesPreparedSharedJvsDualIo() ||
-             "direct-touch-jvs".equals(preparedWindowsLaunch.compatibilityPreset));
-        if (usesDirectCabinetTouch) {
-            // Wonderland Wars and Shining Force Cross read title-specific
-            // touch emulators synthesized from the Wine cursor and left-button
-            // state. Preserve overlays while making uncovered screen touches
-            // absolute press-and-drag input.
-            renderer.setCursorVisible(false);
-            touchpadView.setDirectTouchMode(true);
-            touchpadView.setEnabled(true);
+        if (preparedWindowsLaunch != null) {
+            applyPreparedTouchpadPolicy();
         }
-        else if (preparedWindowsLaunch != null || profile.isDisableMouseInput()) {
+        else if (profile.isDisableMouseInput()) {
             renderer.setCursorVisible(false);
             touchpadView.setDirectTouchMode(false);
             touchpadView.setEnabled(false);
@@ -2625,12 +2618,28 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         touchpadView.setPointerButtonLeftEnabled(true);
         touchpadView.setPointerButtonRightEnabled(true);
 
-        if (!touchpadView.isEnabled()) {
+        if (preparedWindowsLaunch != null) {
+            applyPreparedTouchpadPolicy();
+        }
+        else if (!touchpadView.isEnabled()) {
             touchpadView.setEnabled(true);
             xServerView.getRenderer().setCursorVisible(preparedWindowsLaunch == null);
         }
 
         inputControlsView.invalidate();
+    }
+
+    private void applyPreparedTouchpadPolicy() {
+        if (preparedWindowsLaunch == null)
+            return;
+        // Only the existing touch-emulator recipes consume the Wine pointer.
+        // Hiding their overlay must not enable raw mouse input for other games,
+        // including sessions whose saved controls profile is already None.
+        boolean usesDirectCabinetTouch = usesPreparedSharedJvsDualIo() ||
+            "direct-touch-jvs".equals(preparedWindowsLaunch.compatibilityPreset);
+        touchpadView.setDirectTouchMode(usesDirectCabinetTouch);
+        touchpadView.setEnabled(usesDirectCabinetTouch);
+        xServerView.getRenderer().setCursorVisible(false);
     }
 
     /**
