@@ -77,6 +77,7 @@ public final class TeknoParrotBridgeService extends Service {
             SessionContract.PreparedRequest request = SessionContract.parse(spec);
             byte[] prepared;
             synchronized (lock) {
+                requirePreparedCleanupComplete();
                 cancelProductionProcessExitLocked();
                 if (runtimePackageInstallInProgress)
                     throw new IllegalStateException(
@@ -151,6 +152,7 @@ public final class TeknoParrotBridgeService extends Service {
                 throw new IllegalArgumentException("A short client name is required.");
 
             synchronized (lock) {
+                requirePreparedCleanupComplete();
                 closeSessionLocked();
                 try {
                     session = new BridgeSession(getFilesDir());
@@ -321,6 +323,7 @@ public final class TeknoParrotBridgeService extends Service {
                         throw new IllegalArgumentException(
                             "The runtime-package descriptor is missing.");
                     synchronized (lock) {
+                        requirePreparedCleanupComplete();
                         if (session != null)
                             throw new IllegalStateException(
                                 "Stop the running game before updating runtime packages.");
@@ -505,6 +508,23 @@ public final class TeknoParrotBridgeService extends Service {
      * after the production session is closed and TPUI has unbound; diagnostics
      * and ordinary Winlator activity lifetimes are unaffected.
      */
+    private static void requirePreparedCleanupComplete() {
+        if (PreparedSessionCleanup.isPending())
+            throw new IllegalStateException(
+                "Wait for the previous prepared Activity cleanup to finish.");
+    }
+
+    public static void completePreparedActivityCleanup(
+            PreparedSessionCleanup.Lease lease, boolean recreating) {
+        synchronized (lock) {
+            if (PreparedSessionCleanup.complete(lease, recreating) &&
+                    productionProcessExitPending)
+                scheduleProductionProcessExitLocked(
+                    bridgeClientBound ? PROCESS_EXIT_FALLBACK_DELAY_MS
+                                      : PROCESS_EXIT_AFTER_UNBIND_DELAY_MS);
+        }
+    }
+
     private static void requestProductionProcessExitLocked() {
         productionProcessExitPending = true;
         scheduleProductionProcessExitLocked(
@@ -522,7 +542,8 @@ public final class TeknoParrotBridgeService extends Service {
     }
 
     private static void scheduleProductionProcessExitLocked(long delayMs) {
-        if (!productionProcessExitPending || session != null)
+        if (!productionProcessExitPending || session != null ||
+                PreparedSessionCleanup.isPending())
             return;
         if (scheduledProcessExit != null)
             processExitHandler.removeCallbacks(scheduledProcessExit);
@@ -530,16 +551,18 @@ public final class TeknoParrotBridgeService extends Service {
         scheduledProcessExit = () -> {
             synchronized (lock) {
                 if (!productionProcessExitPending || bridgeClientBound ||
-                    session != null) {
+                    session != null || PreparedSessionCleanup.isPending()) {
                     scheduledProcessExit = null;
                     return;
                 }
                 productionProcessExitPending = false;
                 scheduledProcessExit = null;
+                // Keep the final decision atomic with session preparation:
+                // a new Binder request must not start between this check and exit.
+                Log.i(TAG,
+                    "Recycling the managed Winlator process after production session teardown.");
+                android.os.Process.killProcess(android.os.Process.myPid());
             }
-            Log.i(TAG,
-                "Recycling the managed Winlator process after production session teardown.");
-            android.os.Process.killProcess(android.os.Process.myPid());
         };
         processExitHandler.postDelayed(scheduledProcessExit, delayMs);
     }

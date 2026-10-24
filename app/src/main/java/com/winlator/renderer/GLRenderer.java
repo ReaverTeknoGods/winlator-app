@@ -52,6 +52,7 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     private final ArrayList<RenderableWindow> renderableWindows = new ArrayList<>();
     private boolean forceWindowsFullscreen;
     private volatile boolean preparedWindowAspectFit;
+    private volatile boolean preparedEnEinsCenteredNativeSize;
     private volatile long preparedContentDimensions;
     private boolean rotatePreparedWindowsCounterClockwise;
     private boolean fullscreen = false;
@@ -231,11 +232,16 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
             texture.updateFromDrawable();
 
             if (rotateCounterClockwise) {
+                // The explicit portrait preset describes the upright canvas.
+                // Wine can expose either a landscape or portrait backing client;
+                // rotating a portrait backing must not widen the upright image.
+                int portraitWidth = Math.min(drawable.width, drawable.height);
+                int portraitHeight = Math.max(drawable.width, drawable.height);
                 float scale = Math.min(
-                    (float)xServer.screenInfo.width / drawable.height,
-                    (float)xServer.screenInfo.height / drawable.width);
-                float targetWidth = drawable.height * scale;
-                float targetHeight = drawable.width * scale;
+                    (float)xServer.screenInfo.width / portraitWidth,
+                    (float)xServer.screenInfo.height / portraitHeight);
+                float targetWidth = portraitWidth * scale;
+                float targetHeight = portraitHeight * scale;
                 float targetX = (xServer.screenInfo.width - targetWidth) * 0.5f;
                 float targetY = (xServer.screenInfo.height - targetHeight) * 0.5f;
 
@@ -336,11 +342,13 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
             for (RenderableWindow window : renderableWindows) {
                 if (!window.preparedContentCandidate || window.content.isOffscreenStorage()) continue;
                 if (window.rotateCounterClockwise) {
+                    int portraitWidth = Math.min(window.content.width, window.content.height);
+                    int portraitHeight = Math.max(window.content.width, window.content.height);
                     float scale = Math.min(
-                        (float)xServer.screenInfo.width / window.content.height,
-                        (float)xServer.screenInfo.height / window.content.width);
-                    width = Math.max(width, Math.round(window.content.height * scale));
-                    height = Math.max(height, Math.round(window.content.width * scale));
+                        (float)xServer.screenInfo.width / portraitWidth,
+                        (float)xServer.screenInfo.height / portraitHeight);
+                    width = Math.max(width, Math.round(portraitWidth * scale));
+                    height = Math.max(height, Math.round(portraitHeight * scale));
                 }
                 else if (window.fullscreenTransformation != null) {
                     width = Math.max(width, window.fullscreenTransformation.width);
@@ -380,7 +388,13 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
 
     public void updateViewTransformation(ViewTransformation target, int width, int height) {
         long dimensions = preparedContentDimensions;
-        if (preparedWindowAspectFit && forceWindowsFullscreen && !fullscreen && dimensions != 0) {
+        if (preparedEnEinsCenteredNativeSize && !forceWindowsFullscreen && !fullscreen) {
+            // En-Eins still uses its working native fullscreen D3D9 device.
+            // The saved centered presentation only caps the Android viewport.
+            target.updateCenteredAtMostNative(width, height,
+                xServer.screenInfo.width, xServer.screenInfo.height);
+        }
+        else if (preparedWindowAspectFit && forceWindowsFullscreen && !fullscreen && dimensions != 0) {
             target.updateForContent(width, height, xServer.screenInfo.width, xServer.screenInfo.height,
                 (int)(dimensions >>> 32), (int)dimensions);
         }
@@ -392,7 +406,22 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         viewportNeedsUpdate = true;
     }
 
+    public void setPreparedEnEinsCenteredNativeSize(boolean enabled) {
+        preparedEnEinsCenteredNativeSize = enabled;
+        viewportNeedsUpdate = true;
+    }
+
     public float[] getPreparedGameViewportBounds(int width, int height) {
+        if (preparedEnEinsCenteredNativeSize && !forceWindowsFullscreen && !fullscreen &&
+            width > 1 && height > 1) {
+            ViewTransformation transformation = new ViewTransformation();
+            updateViewTransformation(transformation, width, height);
+            return new float[]{
+                transformation.viewOffsetX, transformation.viewOffsetY,
+                xServer.screenInfo.width * transformation.aspect,
+                xServer.screenInfo.height * transformation.aspect
+            };
+        }
         long dimensions = preparedContentDimensions;
         if (!preparedWindowAspectFit || !forceWindowsFullscreen || fullscreen ||
             dimensions == 0 || width <= 1 || height <= 1)

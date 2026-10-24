@@ -18,7 +18,7 @@ def main():
     setup=method(source,'private void setupXEnvironment()');destroy=method(source,'protected void onDestroy()')
     assert setup.index('ProcessHelper.killGuestProcesses();')<setup.index('prepareBg4DataProjection()')<setup.index('environment.startEnvironmentComponents();')
     assert destroy.index('environment.stopEnvironmentComponents();')<destroy.index('ProcessHelper.killGuestProcesses();')<destroy.index('restorePreparedBg4DataProjection();')
-    prepare=method(source,'private boolean prepareBg4DataProjection()');restore=method(source,'private void restorePreparedBg4DataProjection()')
+    prepare=method(source,'private boolean prepareBg4DataProjection()');restore=method(source,'private boolean restorePreparedBg4DataProjection()')
     assert 'container.setDrives' not in prepare and 'saveData' not in prepare
     assert 'awaitPreparedBg4GuestsStopped()' in prepare and 'awaitPreparedBg4GuestsStopped()' in restore
     helper=repo/'app/src/main/java/com/winlator/teknoparrot/PreparedBg4DataProjection.java';paths=repo/'app/src/main/java/com/winlator/teknoparrot/PreparedGameExecutablePath.java';test=repo/'tools/PreparedBg4DataProjectionTest.java'

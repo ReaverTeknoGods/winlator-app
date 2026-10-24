@@ -10,6 +10,9 @@ public final class PreparedSessionActivityLauncher {
     public static final String EXTRA_PREPARED_WINDOWS_LAUNCH =
         "com.teknoparrot.bridge.v1.PREPARED_WINDOWS_LAUNCH";
 
+    public static final String EXTRA_CLEANUP_GENERATION =
+        "com.teknoparrot.bridge.v1.CLEANUP_GENERATION";
+
     private static final String XSERVER_ACTIVITY_CLASS =
         "com.winlator.XServerDisplayActivity";
 
@@ -42,7 +45,19 @@ public final class PreparedSessionActivityLauncher {
                 request.sessionId, request, prepared, sharedPagePath);
             intent.putExtra(EXTRA_PREPARED_WINDOWS_LAUNCH, true);
         }
-        context.startActivity(intent);
+        long cleanupGeneration = 0;
+        if (!ActivityLaunchContract.FORWARDED_INPUT_DIAGNOSTIC.equals(request.launchKind) &&
+                prepared.flags == SessionContract.SESSION_FLAG_PRODUCTION) {
+            cleanupGeneration = PreparedSessionCleanup.reserve(request.sessionId);
+            intent.putExtra(EXTRA_CLEANUP_GENERATION, cleanupGeneration);
+        }
+        try {
+            context.startActivity(intent);
+        }
+        catch (RuntimeException error) {
+            PreparedSessionCleanup.cancelUnclaimed(request.sessionId, cleanupGeneration);
+            throw error;
+        }
         return request.status();
     }
 }

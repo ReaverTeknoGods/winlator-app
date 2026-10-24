@@ -90,6 +90,7 @@ import com.winlator.teknoparrot.PreparedBg4DataProjection;
 import com.winlator.teknoparrot.PreparedOtoshuApmBuiltin;
 import com.winlator.teknoparrot.PreparedWinSCardCompatibility;
 import com.winlator.teknoparrot.PreparedWindowsLaunchRegistry;
+import com.winlator.teknoparrot.PreparedSessionCleanup;
 import com.winlator.teknoparrot.TeknoParrotBridgeService;
 import com.winlator.services.ForegroundService;
 import com.winlator.widget.FrameRating;
@@ -198,6 +199,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private boolean hasPreparedWindowsLaunch;
     private PreparedWindowsLaunchRegistry.Launch preparedWindowsLaunch;
     private String forwardedSessionId;
+    private PreparedSessionCleanup.Lease preparedCleanupLease;
+    private boolean preparedRejectedBeforeResources;
     private WifiManager.MulticastLock wmmtTerminalMulticastLock;
     private volatile boolean cxbxrProcessMonitorStarted;
     private volatile boolean preparedGameProcessMonitorStarted;
@@ -216,24 +219,51 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 PreparedSessionActivityLauncher.EXTRA_PREPARED_WINDOWS_LAUNCH, false);
         forwardedSessionId = getIntent().getStringExtra(
                 ForwardedInputSessionRegistry.EXTRA_SESSION_ID);
-        if (forwardedSessionId != null) {
-            synchronized (TEKNOPARROT_SESSION_LOCK) {
-                teknoParrotSessionActivity = new WeakReference<>(this);
+        long cleanupGeneration = getIntent().getLongExtra(
+            PreparedSessionActivityLauncher.EXTRA_CLEANUP_GENERATION, 0);
+        if (hasPreparedWindowsLaunch && cleanupGeneration != 0) {
+            try {
+                preparedCleanupLease = PreparedSessionCleanup.claim(
+                    forwardedSessionId, cleanupGeneration);
+            }
+            catch (IllegalStateException error) {
+                Log.e(TAG, "Rejected a stale prepared Activity cleanup reservation.", error);
+                // This Activity owns no resources and must not stop a newer game.
+                preparedRejectedBeforeResources = true;
+                hasPreparedWindowsLaunch = false;
+                finish();
+                return;
             }
         }
         preparedWindowsLaunch = hasPreparedWindowsLaunch
                 ? PreparedWindowsLaunchRegistry.find(forwardedSessionId)
                 : null;
+        if (hasPreparedWindowsLaunch &&
+                (preparedWindowsLaunch == null ||
+                 (preparedWindowsLaunch.productionBridge && preparedCleanupLease == null))) {
+            // Stop may remove the launch registry before this Activity is created.
+            // A valid claimed reservation can finish without touching guest/global state.
+            preparedRejectedBeforeResources = true;
+            hasPreparedWindowsLaunch = false;
+            finish();
+            return;
+        }
         forwardedInputBridge = ForwardedInputSessionRegistry.attach(
                 this,
                 forwardedSessionId);
+        if (hasPreparedWindowsLaunch && forwardedInputBridge == null) {
+            preparedRejectedBeforeResources = true;
+            hasPreparedWindowsLaunch = false;
+            finish();
+            return;
+        }
         if (forwardedInputBridge != null && preparedWindowsLaunch != null)
             forwardedInputBridge.setMapTriggersToExtensionButtons(
                     preparedWindowsLaunch.controlsProfileId == 9033);
-        if (hasPreparedWindowsLaunch &&
-            (preparedWindowsLaunch == null || forwardedInputBridge == null)) {
-            finish();
-            return;
+        if (forwardedSessionId != null) {
+            synchronized (TEKNOPARROT_SESSION_LOCK) {
+                teknoParrotSessionActivity = new WeakReference<>(this);
+            }
         }
         acquirePreparedMulticastLock();
         ProcessHelper.setOutputSuppressed(
@@ -606,29 +636,56 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
     @Override
     protected void onDestroy() {
-        prepareManagedSessionGraphicsTeardown();
-        clearPreparedApmPayload();
-        if (container != null) container.clearTransientDrives();
-        synchronized (TEKNOPARROT_SESSION_LOCK) {
-            if (teknoParrotSessionActivity.get() == this)
-                teknoParrotSessionActivity.clear();
+        if (preparedRejectedBeforeResources) {
+            // A stale or already-stopped launch never acquired guest resources.
+            // Do not stop the current foreground session or reset global output.
+            super.onDestroy();
+            if (preparedCleanupLease != null) {
+                TeknoParrotBridgeService.completePreparedActivityCleanup(
+                    preparedCleanupLease, false);
+                preparedCleanupLease = null;
+            }
+            return;
         }
-        if (forwardedInputBridge != null) {
-            forwardedInputBridge.close();
-            forwardedInputBridge = null;
+        boolean cleanupComplete = false;
+        try {
+            prepareManagedSessionGraphicsTeardown();
+            clearPreparedApmPayload();
+            if (container != null) container.clearTransientDrives();
+            synchronized (TEKNOPARROT_SESSION_LOCK) {
+                if (teknoParrotSessionActivity.get() == this)
+                    teknoParrotSessionActivity.clear();
+            }
+            if (forwardedInputBridge != null) {
+                forwardedInputBridge.close();
+                forwardedInputBridge = null;
+            }
+            winHandler.stop();
+            if (environment != null) environment.stopEnvironmentComponents();
+            if (hasPreparedWindowsLaunch)
+                ProcessHelper.killGuestProcesses();
+            boolean guestsStopped = !hasPreparedWindowsLaunch ||
+                awaitPreparedBg4GuestsStopped();
+            boolean projectionRestored = restorePreparedBg4DataProjection();
+            restorePreparedWineGStreamerOutputFormat();
+            if (hasPreparedWindowsLaunch && !isChangingConfigurations())
+                TeknoParrotBridgeService.releasePreparedSession(this, forwardedSessionId);
+            releasePreparedMulticastLock();
+            ProcessHelper.setOutputSuppressed(false);
+            ForegroundService.stopSession(this);
+            cleanupComplete = guestsStopped && projectionRestored;
         }
-        winHandler.stop();
-        if (environment != null) environment.stopEnvironmentComponents();
-        if (hasPreparedWindowsLaunch)
-            ProcessHelper.killGuestProcesses();
-        restorePreparedBg4DataProjection();
-        restorePreparedWineGStreamerOutputFormat();
-        if (hasPreparedWindowsLaunch && !isChangingConfigurations())
-            TeknoParrotBridgeService.releasePreparedSession(this, forwardedSessionId);
-        releasePreparedMulticastLock();
-        ProcessHelper.setOutputSuppressed(false);
-        ForegroundService.stopSession(this);
-        super.onDestroy();
+        finally {
+            super.onDestroy();
+        }
+        if (cleanupComplete && preparedCleanupLease != null) {
+            TeknoParrotBridgeService.completePreparedActivityCleanup(
+                preparedCleanupLease, isChangingConfigurations());
+            preparedCleanupLease = null;
+        }
+        else if (preparedCleanupLease != null) {
+            Log.e(TAG, "Retaining the process because prepared Activity cleanup is incomplete.");
+        }
     }
 
     private boolean applyPreparedScopedGameDirectory() {
@@ -708,16 +765,18 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         }
     }
 
-    private void restorePreparedBg4DataProjection() {
-        if (preparedBg4DataProjection == null) return;
+    private boolean restorePreparedBg4DataProjection() {
+        if (preparedBg4DataProjection == null) return true;
         try {
             if (!awaitPreparedBg4GuestsStopped())
                 throw new IOException("Guests still own the BG4 projection; preserving it.");
             preparedBg4DataProjection.restore();
             preparedBg4DataProjection = null;
+            return true;
         }
         catch (IOException | SecurityException error) {
             Log.e(TAG, "Retaining BG4 projection evidence after unsafe restore.", error);
+            return false;
         }
     }
 
@@ -1570,6 +1629,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                     envVars.put("TP_BORDERLESS_WINDOW", "1");
                     envVars.put("TP_CENTER_WINDOW", "1");
                 }
+                else if (shouldUsePreparedGigaBorderlessAspectFit()) {
+                    envVars.put("TP_BORDERLESS_WINDOW", "1");
+                    envVars.put("TP_CENTER_WINDOW", "1");
+                }
                 else {
                     envVars.remove("TP_BORDERLESS_WINDOW");
                     envVars.remove("TP_CENTER_WINDOW");
@@ -2191,6 +2254,24 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             "E:\\TeknoParrotRuntime\\OpenParrotWin32Legacy\\OpenParrotLoader.exe".equalsIgnoreCase(executable);
     }
 
+    private boolean shouldUsePreparedGigaBorderlessAspectFit() {
+        // Fit screen retains the working windowed D3D path. Strip the same
+        // owned Win32 chrome as centered mode, without changing client size.
+        return preparedWindowsLaunch != null && preparedWindowsLaunch.productionBridge &&
+            preparedWindowsLaunch.controlsProfileId == 9014 &&
+            "portrait-window-counter-clockwise".equals(preparedWindowsLaunch.compatibilityPreset) &&
+            "aspect-fit".equals(preparedWindowsLaunch.displayMode) &&
+            "E:\\TeknoParrotRuntime\\OpenParrotWin32\\OpenParrotLoader.exe".equalsIgnoreCase(
+                preparedWindowsLaunch.executable);
+    }
+
+    private boolean shouldLimitPreparedEnEinsToNativeSize() {
+        return shouldAspectFitPreparedOpenParrotWindow(true) &&
+            preparedWindowsLaunch.controlsProfileId == 9015 &&
+            "en-eins-native-fullscreen".equals(preparedWindowsLaunch.compatibilityPreset) &&
+            "centered".equals(preparedWindowsLaunch.displayMode);
+    }
+
     private void setupUI() {
         FrameLayout rootView = findViewById(R.id.FLXServerDisplay);
         xServerView = new XServerView(this, xServer);
@@ -2202,6 +2283,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             ("aspect-fit".equals(preparedWindowsLaunch.displayMode) ||
              "fullscreen".equals(preparedWindowsLaunch.displayMode));
         renderer.setPreparedWindowAspectFit(shouldAspectFitPreparedOpenParrotWindow(preparedAspectFit));
+        renderer.setPreparedEnEinsCenteredNativeSize(shouldLimitPreparedEnEinsToNativeSize());
         renderer.setForceWindowsFullscreen(
             preparedAspectFit ||
             (shortcut != null && shortcut.getExtra("forceFullscreen", "0").equals("1")));

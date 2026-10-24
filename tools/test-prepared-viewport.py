@@ -108,10 +108,15 @@ public final class PreparedViewportChecks {
   r=renderer(640,448);
   t=transform(r,3200,2136);centeredContent(t,3200,2136,640,448,640,448,3051.4286f,2136);
   r=renderer(1280,720);r.renderableWindows.add(window(720,1280,0,0,true,false,true));
-  t=transform(r,3200,2136);centeredContent(t,3200,2136,1280,720,1280,720,3200,1800);
+  t=transform(r,3200,2136);centeredContent(t,3200,2136,1280,720,405,720,1201.5f,2136);
   // A landscape native client presented counterclockwise is portrait on screen.
   r.renderableWindows.clear();r.renderableWindows.add(window(1280,720,0,0,true,false,true));
   t=transform(r,3200,2136);centeredContent(t,3200,2136,1280,720,405,720,1201.5f,2136);
+  // Explicit 3:4 portrait presentation from either backing orientation.
+  r.renderableWindows.clear();r.renderableWindows.add(window(480,640,0,0,true,false,true));
+  t=transform(r,3200,2136);centeredContent(t,3200,2136,1280,720,540,720,1602,2136);
+  r.renderableWindows.clear();r.renderableWindows.add(window(640,480,0,0,true,false,true));
+  t=transform(r,3200,2136);centeredContent(t,3200,2136,1280,720,540,720,1602,2136);
   r=renderer(1280,720);r.renderableWindows.add(window(640,480,960,720,true,false,false));
   t=transform(r,1920,1080);centeredContent(t,1920,1080,1280,720,960,720,1440,1080);
   t=transform(r,1080,1920);centeredContent(t,1080,1920,1280,720,960,720,1080,810);
@@ -179,7 +184,7 @@ class RenderableWindow {Drawable content;FullscreenTransformation fullscreenTran
 class Screen {int width,height;}
 class Window {Drawable content;short x,y;Window(Drawable d,int a,int b){content=d;x=(short)a;y=(short)b;}Drawable getContent(){return content;}short getRootX(){return x;}short getRootY(){return y;}}
 class Server {Screen screenInfo=new Screen();RendererHarness renderer;RendererHarness getRenderer(){return renderer;} }
-class RendererHarness {boolean preparedWindowAspectFit,forceWindowsFullscreen,fullscreen,viewportNeedsUpdate;long preparedContentDimensions;
+class RendererHarness {boolean preparedEnEinsCenteredNativeSize,preparedWindowAspectFit,forceWindowsFullscreen,fullscreen,viewportNeedsUpdate;long preparedContentDimensions;
  Server xServer=new Server();ArrayList<RenderableWindow> renderableWindows=new ArrayList<>();boolean isFullscreen(){return fullscreen;}
 ''' +methods+'\n}')
         touch=method((JAVA/'widget/TouchpadView.java').read_text(),'private void updateXform(')
