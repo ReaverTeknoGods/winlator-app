@@ -34,6 +34,14 @@ public final class ForwardedInputMapping {
     }
 
     public static int mapKeyCode(int keyCode, boolean mapTriggersToExtensionButtons) {
+        return mapKeyCode(keyCode, mapTriggersToExtensionButtons, false);
+    }
+
+    public static int mapKeyCode(int keyCode, boolean mapTriggersToExtensionButtons, boolean mahjong) {
+        // Android KEYCODE_A29 through KEYCODE_N42. Only the exact prepared
+        // Mahjong controls opt in; ordinary keyboard mappings stay unchanged.
+        if (mahjong && keyCode >= 29 && keyCode <= 42)
+            return ForwardedInputProtocol.BUTTON_MAHJONG_A + keyCode - 29;
         switch (keyCode) {
             case KEYCODE_DPAD_UP:
                 return ForwardedInputProtocol.BUTTON_UP;
@@ -83,6 +91,14 @@ public final class ForwardedInputMapping {
             return 0;
         float clamped = Math.max(-1.0f, Math.min(1.0f, value));
         return (short)Math.round(clamped * Short.MAX_VALUE);
+    }
+
+    public static int mapMahjongBinding(String binding, boolean enabled) {
+        if (!enabled || binding == null || binding.length() != 5 || !binding.startsWith("KEY_"))
+            return UNMAPPED;
+        char letter = binding.charAt(4);
+        return letter >= 'A' && letter <= 'N'
+                ? ForwardedInputProtocol.BUTTON_MAHJONG_A + letter - 'A' : UNMAPPED;
     }
 
     public static float directionalAxisValue(

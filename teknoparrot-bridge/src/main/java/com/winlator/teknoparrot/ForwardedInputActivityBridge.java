@@ -39,6 +39,7 @@ public final class ForwardedInputActivityBridge
     }
     private PointerViewportProvider pointerViewportProvider;
     private boolean mapTriggersToExtensionButtons;
+    private boolean mapMahjongKeys;
     private boolean closed;
 
     ForwardedInputActivityBridge(
@@ -77,6 +78,10 @@ public final class ForwardedInputActivityBridge
         mapTriggersToExtensionButtons = enabled;
     }
 
+    public void setMapMahjongKeys(boolean enabled) {
+        mapMahjongKeys = enabled;
+    }
+
     public void setPointerViewportProvider(PointerViewportProvider provider) {
         pointerViewportProvider = provider;
     }
@@ -88,7 +93,7 @@ public final class ForwardedInputActivityBridge
         if (action != KeyEvent.ACTION_DOWN && action != KeyEvent.ACTION_UP)
             return;
         int button = ForwardedInputMapping.mapKeyCode(
-                event.getKeyCode(), mapTriggersToExtensionButtons);
+                event.getKeyCode(), mapTriggersToExtensionButtons, mapMahjongKeys);
         if (button == ForwardedInputMapping.UNMAPPED)
             return;
         client.sendButton(

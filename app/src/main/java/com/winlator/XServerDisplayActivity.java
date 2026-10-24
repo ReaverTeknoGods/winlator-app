@@ -260,6 +260,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         if (forwardedInputBridge != null && preparedWindowsLaunch != null)
             forwardedInputBridge.setMapTriggersToExtensionButtons(
                     preparedWindowsLaunch.controlsProfileId == 9033);
+        if (forwardedInputBridge != null)
+            forwardedInputBridge.setMapMahjongKeys(shouldForwardTaisenMahjongInputs());
         if (forwardedSessionId != null) {
             synchronized (TEKNOPARROT_SESSION_LOCK) {
                 teknoParrotSessionActivity = new WeakReference<>(this);
@@ -2439,6 +2441,15 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         return TEKNOPARROT_CONTROLS_PROFILE_PREFERENCE + "_" + stableId;
     }
 
+    private boolean shouldForwardTaisenMahjongInputs() {
+        return preparedWindowsLaunch != null && preparedWindowsLaunch.productionBridge &&
+            preparedWindowsLaunch.controlsProfileId == 9079 &&
+            "taito-legacy-scard".equals(preparedWindowsLaunch.compatibilityPreset) &&
+            preparedWindowsLaunch.executable != null &&
+            "E:\\TeknoParrotRuntime\\OpenParrotWin32\\OpenParrotLoader.exe".equalsIgnoreCase(
+                preparedWindowsLaunch.executable.replace('/', '\\'));
+    }
+
     private void forwardVirtualTeknoParrotInput(
             Binding binding,
             boolean isActionDown,
@@ -2454,6 +2465,25 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         }
 
         switch (binding) {
+            case KEY_A:
+            case KEY_B:
+            case KEY_C:
+            case KEY_D:
+            case KEY_E:
+            case KEY_F:
+            case KEY_G:
+            case KEY_H:
+            case KEY_I:
+            case KEY_J:
+            case KEY_K:
+            case KEY_L:
+            case KEY_M:
+            case KEY_N:
+                int mahjong = ForwardedInputMapping.mapMahjongBinding(
+                        binding.name(), shouldForwardTaisenMahjongInputs());
+                if (mahjong != ForwardedInputMapping.UNMAPPED)
+                    forwardedInputBridge.onVirtualButton(mahjong, isActionDown);
+                break;
             case KEY_UP:
             case GAMEPAD_DPAD_UP:
                 forwardedInputBridge.onVirtualButton(

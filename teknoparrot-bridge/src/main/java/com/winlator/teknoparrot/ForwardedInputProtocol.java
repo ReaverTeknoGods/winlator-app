@@ -38,6 +38,9 @@ public final class ForwardedInputProtocol {
     public static final int BUTTON_6 = 13;
     public static final int BUTTON_7 = 14;
     public static final int BUTTON_8 = 15;
+    public static final int BUTTON_MAHJONG_A = 16;
+    public static final int BUTTON_MAHJONG_N = 29;
+    public static final int BUTTON_COUNT = 30;
 
     private ForwardedInputProtocol() {}
 
@@ -67,7 +70,7 @@ public final class ForwardedInputProtocol {
             int button,
             boolean pressed) {
         checkRange("player", player, 0, 3);
-        checkRange("button", button, 0, 15);
+        checkRange("button", button, 0, BUTTON_COUNT - 1);
         int offset = beginFrame(
                 destination, TYPE_BUTTON, BUTTON_PAYLOAD_BYTES,
                 sequence, eventTimeNanoseconds, deviceStableId);

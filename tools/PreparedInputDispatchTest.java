@@ -211,6 +211,34 @@ public final class PreparedInputDispatchTest {
         legacyTouch.pauseInput();legacyTouch.resumeInput();
         check(legacyTouch.forwardedInputBridge.pauseCalls==1 && legacyTouch.forwardedInputBridge.resumeCalls==1,
                 "unprepared lifecycle bridge callbacks remain unchanged");
+        // The tile-key surface is exclusive to the exact prepared Mahjong route.
+        for (int variant=0;variant<8;variant++) {
+            PreparedInputDispatchActivity mahjong=new PreparedInputDispatchActivity();
+            mahjong.preparedWindowsLaunch.controlsProfileId=9079;
+            mahjong.preparedWindowsLaunch.productionBridge=true;
+            mahjong.preparedWindowsLaunch.compatibilityPreset="taito-legacy-scard";
+            mahjong.preparedWindowsLaunch.executable="E:\\TeknoParrotRuntime\\OpenParrotWin32\\OpenParrotLoader.exe";
+            if(variant==1)mahjong.preparedWindowsLaunch.controlsProfileId=9002;
+            if(variant==2)mahjong.preparedWindowsLaunch.productionBridge=false;
+            if(variant==3)mahjong.preparedWindowsLaunch.compatibilityPreset="none";
+            if(variant==4)mahjong.preparedWindowsLaunch.executable="E:\\Other\\OpenParrotLoader.exe";
+            if(variant==5)mahjong.preparedWindowsLaunch.executable=null;
+            if(variant==6)mahjong.preparedWindowsLaunch=null;
+            if(variant==7)mahjong.preparedWindowsLaunch.executable="e:/TeknoParrotRuntime/OpenParrotWin32/OpenParrotLoader.exe";
+            for(int tile=0;tile<14;tile++)for(boolean down:new boolean[]{true,false}){
+                int calls=mahjong.forwardedInputBridge.virtualButtonCalls;
+                mahjong.virtualInput(Binding.valueOf("KEY_"+(char)('A'+tile)),down);
+                boolean enabled=variant==0||variant==7;
+                check(mahjong.forwardedInputBridge.virtualButtonCalls==calls+(enabled?1:0),"exact tile route "+variant);
+                if(enabled)check(mahjong.forwardedInputBridge.lastButton==16+tile&&mahjong.forwardedInputBridge.buttonHeld==down,"actual tile make/break");
+                noNative(mahjong,"tile overlay "+variant);
+            }
+            if(variant==0){
+                mahjong.drawerLayout.openDrawer();int calls=mahjong.forwardedInputBridge.virtualButtonCalls;
+                mahjong.virtualInput(Binding.KEY_A,true);
+                check(mahjong.forwardedInputBridge.virtualButtonCalls==calls,"drawer retains ownership before tile forwarding");
+            }
+        }
         System.out.println("PASS: " + checks + " assertions; actual Activity dispatch methods, TPUI-only keyboard/controller isolation, system/editor paths and legacy behavior.");
     }
 }
@@ -280,5 +308,5 @@ class XServer { final Keyboard keyboard=new Keyboard(); }
 class Keyboard { int calls; boolean onKeyEvent(KeyEvent event){calls++;return true;} }
 class TouchpadView { int calls; boolean onExternalMouseEvent(MotionEvent event){calls++;return false;} }
 class SparseBooleanArray {final java.util.HashSet<Integer> values=new java.util.HashSet<>();void put(int key,boolean value){if(value)values.add(key);else values.remove(key);}boolean get(int key){return values.contains(key);}void delete(int key){values.remove(key);}void clear(){values.clear();}}
-class PreparedLaunch {int controlsProfileId;}
-enum Binding { KEY_UP,GAMEPAD_DPAD_UP,KEY_DOWN,GAMEPAD_DPAD_DOWN,KEY_LEFT,GAMEPAD_DPAD_LEFT,KEY_RIGHT,GAMEPAD_DPAD_RIGHT,KEY_ENTER,KEY_1,GAMEPAD_BUTTON_START,KEY_F2,KEY_F1,KEY_5,GAMEPAD_BUTTON_SELECT,GAMEPAD_BUTTON_A,GAMEPAD_BUTTON_B,GAMEPAD_BUTTON_X,GAMEPAD_BUTTON_Y,GAMEPAD_BUTTON_L1,GAMEPAD_BUTTON_R1,GAMEPAD_BUTTON_L2,GAMEPAD_BUTTON_R2,GAMEPAD_LEFT_THUMB_LEFT,GAMEPAD_LEFT_THUMB_RIGHT,GAMEPAD_LEFT_THUMB_UP,GAMEPAD_LEFT_THUMB_DOWN,GAMEPAD_RIGHT_THUMB_LEFT,GAMEPAD_RIGHT_THUMB_RIGHT,GAMEPAD_RIGHT_THUMB_UP,GAMEPAD_RIGHT_THUMB_DOWN }
+class PreparedLaunch {int controlsProfileId;boolean productionBridge;String compatibilityPreset="",executable="";}
+enum Binding { KEY_A,KEY_B,KEY_C,KEY_D,KEY_E,KEY_F,KEY_G,KEY_H,KEY_I,KEY_J,KEY_K,KEY_L,KEY_M,KEY_N,KEY_UP,GAMEPAD_DPAD_UP,KEY_DOWN,GAMEPAD_DPAD_DOWN,KEY_LEFT,GAMEPAD_DPAD_LEFT,KEY_RIGHT,GAMEPAD_DPAD_RIGHT,KEY_ENTER,KEY_1,GAMEPAD_BUTTON_START,KEY_F2,KEY_F1,KEY_5,GAMEPAD_BUTTON_SELECT,GAMEPAD_BUTTON_A,GAMEPAD_BUTTON_B,GAMEPAD_BUTTON_X,GAMEPAD_BUTTON_Y,GAMEPAD_BUTTON_L1,GAMEPAD_BUTTON_R1,GAMEPAD_BUTTON_L2,GAMEPAD_BUTTON_R2,GAMEPAD_LEFT_THUMB_LEFT,GAMEPAD_LEFT_THUMB_RIGHT,GAMEPAD_LEFT_THUMB_UP,GAMEPAD_LEFT_THUMB_DOWN,GAMEPAD_RIGHT_THUMB_LEFT,GAMEPAD_RIGHT_THUMB_RIGHT,GAMEPAD_RIGHT_THUMB_UP,GAMEPAD_RIGHT_THUMB_DOWN }

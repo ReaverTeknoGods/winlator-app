@@ -46,7 +46,8 @@ def main():
                   "private void forwardPreparedWindowFocus(boolean hasFocus)",
                   "private void resumePreparedForwardedInput()",
                   "private void pausePreparedForwardedInput()",
-                  "private void forwardVirtualTeknoParrotInput("]
+                  "private void forwardVirtualTeknoParrotInput(",
+                  "private boolean shouldForwardTaisenMahjongInputs()"]
     methods = [extract_method(source, signature) for signature in signatures]
     touch_source = args.touch_activity.read_text(encoding="utf-8") if args.touch_activity else source
     methods.append(extract_method(touch_source, "public boolean dispatchTouchEvent(MotionEvent event)"))
