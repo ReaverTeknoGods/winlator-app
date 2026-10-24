@@ -84,6 +84,7 @@ import com.winlator.teknoparrot.ForwardedInputMapping;
 import com.winlator.teknoparrot.ForwardedInputProtocol;
 import com.winlator.teknoparrot.ForwardedInputSessionRegistry;
 import com.winlator.teknoparrot.PreparedSessionActivityLauncher;
+import com.winlator.teknoparrot.PreparedInputIsolation;
 import com.winlator.teknoparrot.PreparedWindowsLaunchRegistry;
 import com.winlator.teknoparrot.TeknoParrotBridgeService;
 import com.winlator.services.ForegroundService;
@@ -184,6 +185,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private Win32AppWorkarounds win32AppWorkarounds;
     private String screenEffectProfile;
     private ForwardedInputActivityBridge forwardedInputBridge;
+    private final PreparedInputIsolation.FocusState preparedInputFocusState =
+            new PreparedInputIsolation.FocusState();
+    private boolean preparedDrawerInputBlocked;
+    private boolean preparedUiTouchSequence;
     private final SparseBooleanArray overlayTouchPointers = new SparseBooleanArray();
     private boolean forwardedInputActivityDiagnostic;
     private boolean hasPreparedWindowsLaunch;
@@ -245,6 +250,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         drawerLayout = findViewById(R.id.DrawerLayout);
         drawerLayout.setOnApplyWindowInsetsListener((view, windowInsets) -> windowInsets.replaceSystemWindowInsets(0, 0, 0, 0));
         drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED);
+        installPreparedInputDrawerPolicy();
 
         NavigationView navigationView = findViewById(R.id.NavigationView);
         ProcessHelper.removeAllDebugCallbacks();
@@ -545,8 +551,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-        if (forwardedInputBridge != null)
-            forwardedInputBridge.onWindowFocusChanged(hasFocus);
+        forwardPreparedWindowFocus(hasFocus);
 
         if (hasFocus && !forwardedInputActivityDiagnostic) {
             AppUtils.hideSystemUI(this);
@@ -568,7 +573,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     @Override
     public void onResume() {
         super.onResume();
-        if (forwardedInputBridge != null) forwardedInputBridge.onResume();
+        resumePreparedForwardedInput();
         if (environment != null) {
             xServerView.onResume();
             environment.onResume();
@@ -578,7 +583,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
     @Override
     public void onPause() {
-        if (forwardedInputBridge != null) forwardedInputBridge.onPause();
+        pausePreparedForwardedInput();
         ForegroundService.onPauseSession(this);
         super.onPause();
         if (environment != null && !isInPictureInPictureMode()) {
@@ -2242,6 +2247,13 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             float offset) {
         if (forwardedInputBridge == null || binding == null)
             return;
+        if (PreparedInputIsolation.isolatesPreparedInput(
+                preparedWindowsLaunch != null, forwardedInputBridge != null,
+                forwardedInputActivityDiagnostic) &&
+            (preparedUiTouchSequence || androidUiOwnsPreparedInput())) {
+            updatePreparedInputFocus(false);
+            return;
+        }
 
         switch (binding) {
             case KEY_UP:
@@ -2579,8 +2591,90 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         dialog.show();
     }
 
+    private boolean androidUiOwnsPreparedInput() {
+        View focusedView = getCurrentFocus();
+        return !hasWindowFocus() || preparedDrawerInputBlocked ||
+                (focusedView != null && focusedView.onCheckIsTextEditor()) ||
+                (inputControlsView != null && inputControlsView.isEditMode()) ||
+                (drawerLayout != null && drawerLayout.isDrawerVisible(GravityCompat.START));
+    }
+
+    private boolean updatePreparedInputFocus(boolean forceAndroidUiOwnership) {
+        boolean androidUiOwnsInput = forceAndroidUiOwnership || androidUiOwnsPreparedInput();
+        int focusChange = preparedInputFocusState.update(
+                preparedWindowsLaunch != null, forwardedInputBridge != null,
+                forwardedInputActivityDiagnostic, androidUiOwnsInput);
+        if (focusChange != PreparedInputIsolation.FocusState.UNCHANGED)
+            forwardedInputBridge.onWindowFocusChanged(
+                    focusChange == PreparedInputIsolation.FocusState.FOCUSED);
+        return androidUiOwnsInput;
+    }
+
+    private void installPreparedInputDrawerPolicy() {
+        drawerLayout.addDrawerListener(new DrawerLayout.SimpleDrawerListener() {
+            @Override
+            public void onDrawerStateChanged(int state) {
+                preparedDrawerInputBlocked = state != DrawerLayout.STATE_IDLE ||
+                        drawerLayout.isDrawerVisible(GravityCompat.START);
+                updatePreparedInputFocus(false);
+            }
+
+            @Override
+            public void onDrawerOpened(View drawerView) {
+                preparedDrawerInputBlocked = true;
+                updatePreparedInputFocus(false);
+            }
+
+            @Override
+            public void onDrawerClosed(View drawerView) {
+                preparedDrawerInputBlocked = false;
+                updatePreparedInputFocus(false);
+            }
+        });
+    }
+
+    private void forwardPreparedWindowFocus(boolean hasFocus) {
+        if (forwardedInputBridge == null)
+            return;
+        if (PreparedInputIsolation.isolatesPreparedInput(
+                preparedWindowsLaunch != null, true, forwardedInputActivityDiagnostic))
+            updatePreparedInputFocus(!hasFocus);
+        else
+            forwardedInputBridge.onWindowFocusChanged(hasFocus);
+    }
+
+    private void resumePreparedForwardedInput() {
+        if (forwardedInputBridge == null)
+            return;
+        if (PreparedInputIsolation.isolatesPreparedInput(
+                preparedWindowsLaunch != null, true, forwardedInputActivityDiagnostic))
+            updatePreparedInputFocus(false);
+        else
+            forwardedInputBridge.onResume();
+    }
+
+    private void pausePreparedForwardedInput() {
+        if (forwardedInputBridge == null)
+            return;
+        if (PreparedInputIsolation.isolatesPreparedInput(
+                preparedWindowsLaunch != null, true, forwardedInputActivityDiagnostic))
+            updatePreparedInputFocus(true);
+        else
+            forwardedInputBridge.onPause();
+    }
+
     @Override
     public boolean dispatchGenericMotionEvent(MotionEvent event) {
+        boolean androidUiOwnsInput = updatePreparedInputFocus(false);
+        boolean controllerMotion =
+                (event.getSource() & android.view.InputDevice.SOURCE_JOYSTICK) ==
+                        android.view.InputDevice.SOURCE_JOYSTICK ||
+                ExternalController.isGameController(event.getDevice());
+        PreparedInputIsolation.Route route = PreparedInputIsolation.motionRoute(
+                preparedWindowsLaunch != null, forwardedInputBridge != null,
+                forwardedInputActivityDiagnostic, androidUiOwnsInput, controllerMotion);
+        if (route == PreparedInputIsolation.Route.ANDROID_UI)
+            return super.dispatchGenericMotionEvent(event);
         // A per-profile controller assignment owns the event. Do not also send
         // the bridge's hardcoded Xbox mapping or one physical control would
         // activate both its old and newly selected cabinet actions.
@@ -2592,13 +2686,19 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             forwardedInputBridge.onGenericMotionEvent(event);
         if (forwardedInputActivityDiagnostic)
             return super.dispatchGenericMotionEvent(event);
-        if (mappedByControlsProfile)
+        if (mappedByControlsProfile || route == PreparedInputIsolation.Route.FORWARDED_ONLY)
             return true;
         return !winHandler.onGenericMotionEvent(event) && !touchpadView.onExternalMouseEvent(event) && super.dispatchGenericMotionEvent(event);
     }
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        boolean androidUiOwnsInput = updatePreparedInputFocus(false);
+        PreparedInputIsolation.Route route = PreparedInputIsolation.keyRoute(
+                preparedWindowsLaunch != null, forwardedInputBridge != null,
+                forwardedInputActivityDiagnostic, androidUiOwnsInput, event.isSystem());
+        if (route == PreparedInputIsolation.Route.ANDROID_UI)
+            return super.dispatchKeyEvent(event);
         boolean mappedByControlsProfile =
                 !forwardedInputActivityDiagnostic &&
                 inputControlsView != null &&
@@ -2607,7 +2707,9 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             forwardedInputBridge.onKeyEvent(event);
         if (forwardedInputActivityDiagnostic)
             return super.dispatchKeyEvent(event);
-        if (mappedByControlsProfile)
+        // F1/F2 and ordinary cabinet keys have already reached either the
+        // editable profile mapping or TPI1. Do not also inject them into Wine.
+        if (mappedByControlsProfile || route == PreparedInputIsolation.Route.FORWARDED_ONLY)
             return true;
         return (!winHandler.onKeyEvent(event) && xServer.keyboard.onKeyEvent(event)) ||
                (!ExternalController.isGameController(event.getDevice()) && super.dispatchKeyEvent(event));
@@ -2615,10 +2717,17 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
     @Override
     public boolean dispatchTouchEvent(MotionEvent event) {
+        boolean androidUiOwnsInput = updatePreparedInputFocus(false);
+        boolean isolatePreparedInput = PreparedInputIsolation.isolatesPreparedInput(
+                preparedWindowsLaunch != null, forwardedInputBridge != null,
+                forwardedInputActivityDiagnostic);
+        if (isolatePreparedInput && androidUiOwnsInput)
+            preparedUiTouchSequence = true;
+        boolean suppressCabinetTouch = isolatePreparedInput && preparedUiTouchSequence;
         int action = event.getActionMasked();
         int actionIndex = event.getActionIndex();
         int pointerId = event.getPointerId(actionIndex);
-        if ((action == MotionEvent.ACTION_DOWN ||
+        if (!suppressCabinetTouch && (action == MotionEvent.ACTION_DOWN ||
                 action == MotionEvent.ACTION_POINTER_DOWN) &&
                 inputControlsView != null &&
                 inputControlsView.isPointOverControl(
@@ -2626,9 +2735,15 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             overlayTouchPointers.put(pointerId, true);
         }
 
-        if (forwardedInputBridge != null)
+        if (forwardedInputBridge != null && !suppressCabinetTouch)
             forwardedInputBridge.onTouchEvent(event, overlayTouchPointers);
         boolean handled = super.dispatchTouchEvent(event);
+
+        // A touch can open or close the drawer while Android dispatches it.
+        // Re-evaluate after the UI callback, and keep the gesture that owned
+        // Android UI away from the cabinet until its final UP/CANCEL.
+        if (isolatePreparedInput && updatePreparedInputFocus(false))
+            preparedUiTouchSequence = true;
 
         if (action == MotionEvent.ACTION_UP ||
                 action == MotionEvent.ACTION_POINTER_UP) {
@@ -2637,6 +2752,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         else if (action == MotionEvent.ACTION_CANCEL) {
             overlayTouchPointers.clear();
         }
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL)
+            preparedUiTouchSequence = false;
         return handled;
     }
 

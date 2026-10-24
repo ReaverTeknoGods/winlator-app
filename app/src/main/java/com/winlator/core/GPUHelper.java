@@ -9,6 +9,8 @@ import androidx.preference.PreferenceManager;
 
 import java.util.Locale;
 import java.util.Objects;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -21,6 +23,7 @@ import javax.microedition.khronos.opengles.GL10;
 import dalvik.annotation.optimization.CriticalNative;
 
 public abstract class GPUHelper {
+    private static final long GPU_INFORMATION_TIMEOUT_MS = 10_000;
     public enum VkPresentMode {
         IMMEDIATE, MAILBOX, FIFO, FIFO_RELAXED;
 
@@ -35,13 +38,46 @@ public abstract class GPUHelper {
     }
 
     private static ArrayMap<String, String> loadGPUInformation(Context context) {
-        final Thread thread = Thread.currentThread();
-        final ArrayMap<String, String> gpuInfo = new ArrayMap<>();
-        gpuInfo.put("renderer", "");
-        gpuInfo.put("vendor", "");
-        gpuInfo.put("version", "");
+        final ArrayMap<String, String> gpuInfo;
+        try {
+            gpuInfo = BoundedGpuProbe.run(
+                GPUHelper::readGPUInformation, GPU_INFORMATION_TIMEOUT_MS);
+        }
+        catch (InterruptedException error) {
+            throw new IllegalStateException("GPU information probe was interrupted.", error);
+        }
+        catch (TimeoutException error) {
+            throw new IllegalStateException("GPU information probe timed out after " +
+                GPU_INFORMATION_TIMEOUT_MS + " ms.", error);
+        }
+        catch (ExecutionException error) {
+            throw new IllegalStateException("Could not read GPU information.", error.getCause());
+        }
 
-        (new Thread(() -> {
+        // Persist only a successfully completed probe. A worker that returns
+        // after its caller timed out must not change the cached driver choice.
+        final SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(context);
+        preferences.edit()
+            .putString("gpu_renderer", gpuInfo.get("renderer"))
+            .putString("gpu_vendor", gpuInfo.get("vendor"))
+            .putString("gpu_version", gpuInfo.get("version"))
+            .apply();
+        return gpuInfo;
+    }
+
+    private static ArrayMap<String, String> readGPUInformation() {
+        EGL10 egl = (EGL10)EGLContext.getEGL();
+        EGLDisplay eglDisplay = egl.eglGetDisplay(EGL10.EGL_DEFAULT_DISPLAY);
+        if (eglDisplay == null || eglDisplay == EGL10.EGL_NO_DISPLAY)
+            throw new IllegalStateException("EGL did not provide a GPU display.");
+
+        EGLContext eglContext = EGL10.EGL_NO_CONTEXT;
+        boolean initialized = false;
+        try {
+            int[] version = new int[2];
+            if (!egl.eglInitialize(eglDisplay, version))
+                throw new IllegalStateException("Could not initialize the GPU probe display.");
+            initialized = true;
             int[] attribList = new int[] {
                 EGL10.EGL_SURFACE_TYPE, EGL10.EGL_PBUFFER_BIT,
                 EGL10.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
@@ -54,46 +90,39 @@ public abstract class GPUHelper {
             EGLConfig[] configs = new EGLConfig[1];
             int[] configCounts = new int[1];
 
-            EGL10 egl = (EGL10)EGLContext.getEGL();
-            EGLDisplay eglDisplay = egl.eglGetDisplay(EGL10.EGL_DEFAULT_DISPLAY);
-
-            int[] version = new int[2];
-            egl.eglInitialize(eglDisplay, version);
-            egl.eglChooseConfig(eglDisplay, attribList, configs, 1, configCounts);
+            if (!egl.eglChooseConfig(eglDisplay, attribList, configs, 1, configCounts) ||
+                    configCounts[0] == 0 || configs[0] == null)
+                throw new IllegalStateException("EGL did not provide a GPU probe configuration.");
 
             attribList = new int[]{EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, EGL10.EGL_NONE};
-            EGLContext eglContext = egl.eglCreateContext(eglDisplay, configs[0], EGL10.EGL_NO_CONTEXT, attribList);
-
-            egl.eglMakeCurrent(eglDisplay, EGL10.EGL_NO_SURFACE, EGL10.EGL_NO_SURFACE, eglContext);
+            eglContext = egl.eglCreateContext(eglDisplay, configs[0], EGL10.EGL_NO_CONTEXT, attribList);
+            if (eglContext == null || eglContext == EGL10.EGL_NO_CONTEXT)
+                throw new IllegalStateException("Could not create the GPU probe context.");
+            if (!egl.eglMakeCurrent(eglDisplay, EGL10.EGL_NO_SURFACE, EGL10.EGL_NO_SURFACE, eglContext))
+                throw new IllegalStateException("Could not activate the GPU probe context.");
 
             GL10 gl = (GL10)eglContext.getGL();
             String gpuRenderer = Objects.toString(gl.glGetString(GL10.GL_RENDERER), "");
             String gpuVendor = Objects.toString(gl.glGetString(GL10.GL_VENDOR), "");
             String gpuVersion = Objects.toString(gl.glGetString(GL10.GL_VERSION), "");
+            if (gpuRenderer.isEmpty() || gpuVendor.isEmpty() || gpuVersion.isEmpty())
+                throw new IllegalStateException("The GPU probe returned incomplete information.");
 
+            ArrayMap<String, String> gpuInfo = new ArrayMap<>();
             gpuInfo.put("renderer", gpuRenderer);
             gpuInfo.put("vendor", gpuVendor);
             gpuInfo.put("version", gpuVersion);
 
-            final SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(context);
-            preferences.edit()
-                .putString("gpu_renderer", gpuRenderer)
-                .putString("gpu_vendor", gpuVendor)
-                .putString("gpu_version", gpuVersion)
-                .apply();
-
-            synchronized (thread) {
-                thread.notify();
-            }
-        })).start();
-
-        synchronized (thread) {
-            try {
-                thread.wait();
-            }
-            catch (InterruptedException e) {}
+            return gpuInfo;
         }
-        return gpuInfo;
+        finally {
+            if (eglContext != null && eglContext != EGL10.EGL_NO_CONTEXT) {
+                egl.eglMakeCurrent(eglDisplay, EGL10.EGL_NO_SURFACE,
+                    EGL10.EGL_NO_SURFACE, EGL10.EGL_NO_CONTEXT);
+                egl.eglDestroyContext(eglDisplay, eglContext);
+            }
+            if (initialized) egl.eglTerminate(eglDisplay);
+        }
     }
 
     public static String glGetRenderer(Context context) {
