@@ -1,4 +1,6 @@
-"""Compile production En-Eins viewport/pointer math against analytic checks.
+"""Compile production prepared-centered viewport/pointer math against analytic checks.
+
+This historical test entry also retains the En-Eins native guest fullscreen case.
 
 Run from a checkout with: python tools/test-prepared-en-eins-native-viewport.py
 Requires a JDK on PATH or JAVA_HOME. Uses only a temporary Java source tree;
@@ -43,7 +45,7 @@ public final class EnEinsNativeViewportChecks {
  static RendererHarness renderer(int w,int h,boolean fit,boolean force,boolean stretch,boolean cap,long content) {
   RendererHarness r=new RendererHarness();r.xServer.screenInfo.width=w;r.xServer.screenInfo.height=h;
   r.preparedWindowAspectFit=fit;r.forceWindowsFullscreen=force;r.fullscreen=stretch;
-  r.preparedContentDimensions=content;r.setPreparedEnEinsCenteredNativeSize(cap);
+  r.preparedContentDimensions=content;r.setPreparedCenteredNativeSize(cap);
   yes(r.viewportNeedsUpdate,"native-size setter invalidates viewport");return r;
  }
  static ViewTransformation transform(RendererHarness r,int w,int h) {
@@ -85,7 +87,7 @@ public final class EnEinsNativeViewportChecks {
   }
  }
  static void policyChecks() {
-  ActivityHarness h=new ActivityHarness();yes(!h.shouldLimitPreparedEnEinsToNativeSize(),"absent launch unchanged");
+  ActivityHarness h=new ActivityHarness();yes(!h.shouldLimitPreparedOpenParrotToNativeSize(),"absent launch unchanged");
   h.preparedWindowsLaunch=new PreparedLaunch();PreparedLaunch l=h.preparedWindowsLaunch;
   String[] routes={"E:\\TeknoParrotRuntime\\OpenParrotWin32\\OpenParrotLoader.exe",
    "E:\\TeknoParrotRuntime\\OpenParrotWin64\\OpenParrotLoader64.exe",
@@ -100,12 +102,12 @@ public final class EnEinsNativeViewportChecks {
   for(boolean production:new boolean[]{false,true})for(int profile:new int[]{0,9015,9014,9020})
    for(int ri=0;ri<routes.length;ri++)for(String preset:presets)for(String mode:modes){
     l.productionBridge=production;l.controlsProfileId=profile;l.executable=routes[ri];l.compatibilityPreset=preset;l.displayMode=mode;
-    boolean expected=production&&profile==9015&&ri<3&&"en-eins-native-fullscreen".equals(preset)&&"centered".equals(mode);
-    yes(h.shouldLimitPreparedEnEinsToNativeSize()==expected,"exact production/profile/preset/route/centered guard");policyCases++;
+    boolean expected=production&&ri<3&&"centered".equals(mode);
+    yes(h.shouldLimitPreparedOpenParrotToNativeSize()==expected,"exact production/route/centered guard; profiles and presets preserve centered pixels");policyCases++;
    }
  }
  static void nativeChecks() {
-  int[][] desktops={{1024,768},{640,480},{1280,720},{720,1280},{640,448}};
+  int[][] desktops={{1024,768},{640,480},{1280,720},{720,1280},{640,448},{1024,1024},{3840,2160},{2160,3840}};
   int[][] panels={{3200,2136},{1920,1080},{1024,768},{640,480},{800,400},{481,719},{1080,1920},{1,1},{2000,2000}};
   for(int[] d:desktops)for(int[] p:panels){
    RendererHarness r=renderer(d[0],d[1],false,false,false,true,0);ViewTransformation t=transform(r,p[0],p[1]);
@@ -115,15 +117,22 @@ public final class EnEinsNativeViewportChecks {
    yes(d[0]*scale<=p[0]+.001f&&d[1]*scale<=p[1]+.001f,"small panel fits complete desktop");
    pointerChecks(r,t,p[0],p[1],d[0],d[1]);nativeCases++;
   }
+  RendererHarness desktop=renderer(1280,720,false,false,false,true,0);
+  ViewTransformation nativeDesktop=transform(desktop,3200,2136);
+  yes(nativeDesktop.viewWidth==1280&&nativeDesktop.viewHeight==720&&nativeDesktop.viewOffsetX==960&&nativeDesktop.viewOffsetY==708,"centered1280x720 pixels remain native onPad7");
+  near(640*nativeDesktop.aspect,640,0,"inner640px client remains640px");
+  near(nativeDesktop.viewOffsetX+320*nativeDesktop.aspect,1280,0,"centered inner640px client origin");
+  desktop.setPreparedCenteredNativeSize(false);ViewTransformation oldFit=transform(desktop,3200,2136);
+  yes(oldFit.viewWidth==3200&&oldFit.viewHeight==1800&&oldFit.viewOffsetX==0&&oldFit.viewOffsetY==168,"ordinary fallback reproduction: source desktop fits at2.5x");
   RendererHarness r=renderer(1024,768,false,false,false,true,0);ViewTransformation t=transform(r,3200,2136);
   yes(t.viewWidth==1024&&t.viewHeight==768&&t.viewOffsetX==1088&&t.viewOffsetY==684,"Pad7 1024x768 centered native anchor");
-  r.setPreparedEnEinsCenteredNativeSize(false);t=transform(r,3200,2136);
+  r.setPreparedCenteredNativeSize(false);t=transform(r,3200,2136);
   yes(t.viewWidth==2848&&t.viewHeight==2136&&t.viewOffsetX==176&&t.viewOffsetY==0,"flag off restores ordinary full-height fit");
-  r.setPreparedEnEinsCenteredNativeSize(true);t=transform(r,800,600);
+  r.setPreparedCenteredNativeSize(true);t=transform(r,800,600);
   yes(t.viewWidth==800&&t.viewHeight==600&&t.viewOffsetX==0&&t.viewOffsetY==0,"smaller matching panel exact fit");
  }
  static void ordinaryChecks() {
-  int[][] desktops={{1024,768},{640,480},{1280,720},{720,1280},{640,448}};
+  int[][] desktops={{1024,768},{640,480},{1280,720},{720,1280},{640,448},{1024,1024},{3840,2160},{2160,3840}};
   int[][] panels={{3200,2136},{1920,1080},{1024,768},{640,480},{800,400},{481,719},{1080,1920}};
   for(int[] d:desktops)for(int[] p:panels)for(boolean fit:new boolean[]{false,true})
    for(boolean force:new boolean[]{false,true})for(boolean stretch:new boolean[]{false,true})
@@ -147,7 +156,7 @@ public final class EnEinsNativeViewportChecks {
  }
  public static void main(String[] args) {
   policyChecks();nativeChecks();ordinaryChecks();
-  System.out.println("En-Eins native viewport PASS: checks="+checks+" policy_cases="+policyCases+" native_cases="+nativeCases+" ordinary_cases="+ordinaryCases);
+  System.out.println("Prepared centered native viewport PASS: checks="+checks+" policy_cases="+policyCases+" native_cases="+nativeCases+" ordinary_cases="+ordinaryCases);
  }
 }
 '''
@@ -182,18 +191,18 @@ def run(root=ROOT):
         methods = '\n'.join(method(renderer, signature) for signature in (
             'public void updateViewTransformation(',
             'public float[] getPreparedGameViewportBounds(',
-            'public void setPreparedEnEinsCenteredNativeSize('))
+            'public void setPreparedCenteredNativeSize('))
         write('com/winlator/renderer/RendererHarness.java', '''package com.winlator.renderer;
 class Screen {int width,height;}
 class Server {Screen screenInfo=new Screen();RendererHarness renderer;RendererHarness getRenderer(){return renderer;}}
 class RendererHarness {
  Server xServer=new Server();
- boolean preparedWindowAspectFit,forceWindowsFullscreen,fullscreen,viewportNeedsUpdate,preparedEnEinsCenteredNativeSize;
+ boolean preparedWindowAspectFit,forceWindowsFullscreen,fullscreen,viewportNeedsUpdate,preparedCenteredNativeSize;
  long preparedContentDimensions;boolean isFullscreen(){return fullscreen;}
 ''' + methods + '\n}')
         policies = '\n'.join(method(activity, signature).replace('private boolean', 'boolean', 1)
                              for signature in ('private boolean shouldAspectFitPreparedOpenParrotWindow(',
-                                               'private boolean shouldLimitPreparedEnEinsToNativeSize('))
+                                               'private boolean shouldLimitPreparedOpenParrotToNativeSize('))
         write('com/winlator/renderer/ActivityHarness.java', '''package com.winlator.renderer;
 class PreparedLaunch {boolean productionBridge;int controlsProfileId;String executable,compatibilityPreset,displayMode;}
 class ActivityHarness {PreparedLaunch preparedWindowsLaunch;
@@ -216,7 +225,7 @@ class PointerHarness {
                         *map(str, sorted(folder.rglob('*.java')))], check=True)
         subprocess.run([str(java), '-cp', str(folder), 'com.winlator.renderer.EnEinsNativeViewportChecks'], check=True)
 
-    assert 'renderer.setPreparedEnEinsCenteredNativeSize(shouldLimitPreparedEnEinsToNativeSize());' in method(activity, 'private void setupUI(')
+    assert 'renderer.setPreparedCenteredNativeSize(shouldLimitPreparedOpenParrotToNativeSize());' in method(activity, 'private void setupUI(')
     assert 'updateViewTransformation(viewTransformation, surfaceWidth, surfaceHeight);' in method(renderer, 'protected void drawFrame(')
     assert 'updateXform(getWidth(), getHeight(),' in method(touch_source, 'public boolean onTouchEvent(')
     assert 'getPreparedGameViewportBounds(' in method(activity, 'private float[] getPreparedPointerViewport(')

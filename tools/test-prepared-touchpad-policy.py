@@ -134,7 +134,7 @@ class ActivityHarness {
     FrameRating frameRating;
     FrameLayout findViewById(int ignored) { return new FrameLayout(); }
     boolean shouldAspectFitPreparedOpenParrotWindow(boolean value) { return value; }
-    boolean shouldLimitPreparedEnEinsToNativeSize() { return false; }
+    boolean shouldLimitPreparedOpenParrotToNativeSize() { return false; }
     float[] getPreparedPointerViewport() { return null; }
     String getTeknoParrotControlsPreferenceKey(int value) { return "controls_"+value; }
     void applyPreparedSurfaceFrameRate() {}
@@ -182,7 +182,7 @@ class GLRenderer {
     void setCursorColor(int value) {}
     void setCursorScale(float value) {}
     void setPreparedWindowAspectFit(boolean value) {}
-    void setPreparedEnEinsCenteredNativeSize(boolean value) {}
+    void setPreparedCenteredNativeSize(boolean value) {}
     void setForceWindowsFullscreen(boolean value) {}
     void setRotatePreparedWindowsCounterClockwise(boolean value) {}
     void setScreenOffsetYRelativeToCursor(float value) {}

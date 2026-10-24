@@ -52,7 +52,7 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     private final ArrayList<RenderableWindow> renderableWindows = new ArrayList<>();
     private boolean forceWindowsFullscreen;
     private volatile boolean preparedWindowAspectFit;
-    private volatile boolean preparedEnEinsCenteredNativeSize;
+    private volatile boolean preparedCenteredNativeSize;
     private volatile long preparedContentDimensions;
     private boolean rotatePreparedWindowsCounterClockwise;
     private boolean fullscreen = false;
@@ -388,9 +388,9 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
 
     public void updateViewTransformation(ViewTransformation target, int width, int height) {
         long dimensions = preparedContentDimensions;
-        if (preparedEnEinsCenteredNativeSize && !forceWindowsFullscreen && !fullscreen) {
-            // En-Eins still uses its working native fullscreen D3D9 device.
-            // The saved centered presentation only caps the Android viewport.
+        if (preparedCenteredNativeSize && !forceWindowsFullscreen && !fullscreen) {
+            // Centered presentation preserves native pixels on larger panels.
+            // Smaller panels still fit the complete desktop without cropping.
             target.updateCenteredAtMostNative(width, height,
                 xServer.screenInfo.width, xServer.screenInfo.height);
         }
@@ -406,13 +406,13 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         viewportNeedsUpdate = true;
     }
 
-    public void setPreparedEnEinsCenteredNativeSize(boolean enabled) {
-        preparedEnEinsCenteredNativeSize = enabled;
+    public void setPreparedCenteredNativeSize(boolean enabled) {
+        preparedCenteredNativeSize = enabled;
         viewportNeedsUpdate = true;
     }
 
     public float[] getPreparedGameViewportBounds(int width, int height) {
-        if (preparedEnEinsCenteredNativeSize && !forceWindowsFullscreen && !fullscreen &&
+        if (preparedCenteredNativeSize && !forceWindowsFullscreen && !fullscreen &&
             width > 1 && height > 1) {
             ViewTransformation transformation = new ViewTransformation();
             updateViewTransformation(transformation, width, height);

@@ -184,7 +184,7 @@ class RenderableWindow {Drawable content;FullscreenTransformation fullscreenTran
 class Screen {int width,height;}
 class Window {Drawable content;short x,y;Window(Drawable d,int a,int b){content=d;x=(short)a;y=(short)b;}Drawable getContent(){return content;}short getRootX(){return x;}short getRootY(){return y;}}
 class Server {Screen screenInfo=new Screen();RendererHarness renderer;RendererHarness getRenderer(){return renderer;} }
-class RendererHarness {boolean preparedEnEinsCenteredNativeSize,preparedWindowAspectFit,forceWindowsFullscreen,fullscreen,viewportNeedsUpdate;long preparedContentDimensions;
+class RendererHarness {boolean preparedCenteredNativeSize,preparedWindowAspectFit,forceWindowsFullscreen,fullscreen,viewportNeedsUpdate;long preparedContentDimensions;
  Server xServer=new Server();ArrayList<RenderableWindow> renderableWindows=new ArrayList<>();boolean isFullscreen(){return fullscreen;}
 ''' +methods+'\n}')
         touch=method((JAVA/'widget/TouchpadView.java').read_text(),'private void updateXform(')

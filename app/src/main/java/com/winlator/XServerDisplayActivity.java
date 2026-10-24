@@ -2266,10 +2266,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 preparedWindowsLaunch.executable);
     }
 
-    private boolean shouldLimitPreparedEnEinsToNativeSize() {
+    private boolean shouldLimitPreparedOpenParrotToNativeSize() {
         return shouldAspectFitPreparedOpenParrotWindow(true) &&
-            preparedWindowsLaunch.controlsProfileId == 9015 &&
-            "en-eins-native-fullscreen".equals(preparedWindowsLaunch.compatibilityPreset) &&
             "centered".equals(preparedWindowsLaunch.displayMode);
     }
 
@@ -2284,7 +2282,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             ("aspect-fit".equals(preparedWindowsLaunch.displayMode) ||
              "fullscreen".equals(preparedWindowsLaunch.displayMode));
         renderer.setPreparedWindowAspectFit(shouldAspectFitPreparedOpenParrotWindow(preparedAspectFit));
-        renderer.setPreparedEnEinsCenteredNativeSize(shouldLimitPreparedEnEinsToNativeSize());
+        renderer.setPreparedCenteredNativeSize(shouldLimitPreparedOpenParrotToNativeSize());
         renderer.setForceWindowsFullscreen(
             preparedAspectFit ||
             (shortcut != null && shortcut.getExtra("forceFullscreen", "0").equals("1")));
