@@ -9,6 +9,8 @@ class RenderableWindow {
     final boolean transparent;
     final FullscreenTransformation fullscreenTransformation;
     final boolean rotateCounterClockwise;
+    final boolean preparedContentCandidate;
+    final boolean preparedViewportBlocker;
 
     public RenderableWindow(
             Drawable content,
@@ -16,12 +18,16 @@ class RenderableWindow {
             int rootY,
             boolean transparent,
             FullscreenTransformation fullscreenTransformation,
-            boolean rotateCounterClockwise) {
+            boolean rotateCounterClockwise,
+            boolean preparedContentCandidate,
+            boolean preparedViewportBlocker) {
         this.content = content;
         this.rootX = (short)rootX;
         this.rootY = (short)rootY;
         this.transparent = transparent;
         this.fullscreenTransformation = fullscreenTransformation;
         this.rotateCounterClockwise = rotateCounterClockwise;
+        this.preparedContentCandidate = preparedContentCandidate;
+        this.preparedViewportBlocker = preparedViewportBlocker;
     }
 }

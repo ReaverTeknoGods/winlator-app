@@ -12,7 +12,20 @@ public class ViewTransformation {
     public float sceneOffsetY;
 
     public void update(int outerWidth, int outerHeight, int innerWidth, int innerHeight) {
-        aspect = Math.min((float)outerWidth / innerWidth, (float)outerHeight / innerHeight);
+        updateForContent(outerWidth, outerHeight, innerWidth, innerHeight, innerWidth, innerHeight);
+    }
+
+    public void updateForContent(int outerWidth, int outerHeight, int innerWidth, int innerHeight,
+                                 int contentWidth, int contentHeight) {
+        if (contentWidth <= 0 || contentHeight <= 0 ||
+            contentWidth > innerWidth || contentHeight > innerHeight) {
+            contentWidth = innerWidth;
+            contentHeight = innerHeight;
+        }
+        // The complete game client has already been fitted inside the desktop.
+        // Fit that client to the panel; fitting the desktop a second time adds
+        // unwanted margins on panels whose aspect differs from the desktop.
+        aspect = Math.min((float)outerWidth / contentWidth, (float)outerHeight / contentHeight);
         viewWidth = (int)Math.ceil(innerWidth * aspect);
         viewHeight = (int)Math.ceil(innerHeight * aspect);
         viewOffsetX = (int)((outerWidth - innerWidth * aspect) * 0.5f);

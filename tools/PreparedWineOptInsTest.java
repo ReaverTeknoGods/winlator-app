@@ -6,6 +6,7 @@ public final class PreparedWineOptInsTest {
     private static final String LUPIN = "TP_WINE_LUPIN_JVS";
     private static final String PUZZLE = "TP_WINE_PUZZLE_BOBBLE_SD";
     private static final String CAPCOM = "TP_WINE_CAPCOM_NESICA_SD";
+    private static final String BG4 = "TP_WINE_BG4_PRIMARY_PCM";
     private static final String KOF = "TP_WINE_KOFMIRA_JVS_RECONNECT";
     private static final String AUTH = "TP_WINE_AMAUTH_PRESERVE_CONFIG";
     private static final String WANGAN = "TP_WINE_WANGAN_BIND_REDIRECT";
@@ -33,12 +34,12 @@ public final class PreparedWineOptInsTest {
         EnvVars environment = new EnvVars();
         // Every fixture begins with stale container values; an unrelated flag
         // and the already selected companion launch must remain untouched.
-        for (String name : new String[] {LUPIN, PUZZLE, CAPCOM, KOF, AUTH, WANGAN}) environment.put(name, "1");
+        for (String name : new String[] {LUPIN, PUZZLE, CAPCOM, BG4, KOF, AUTH, WANGAN}) environment.put(name, "1");
         environment.put("UNRELATED_SETTING", "unchanged");
         if (prelaunch != null) environment.put("TP_PRELAUNCH_EXECUTABLE", prelaunch);
         activity.apply(environment);
         Set<String> actual = new HashSet<>();
-        for (String name : new String[] {LUPIN, PUZZLE, CAPCOM, KOF, AUTH, WANGAN}) {
+        for (String name : new String[] {LUPIN, PUZZLE, CAPCOM, BG4, KOF, AUTH, WANGAN}) {
             if (environment.has(name)) {
                 check("1".equals(environment.get(name)), reason + ": exact opt-in value");
                 actual.add(name);
@@ -70,6 +71,18 @@ public final class PreparedWineOptInsTest {
         exercise("Capcom absent path", "capcom-nesica-sd", 9002, LOADER32, null, null);
         exercise("Capcom traversal", "capcom-nesica-sd", 9002, LOADER32, "G:\\Vampire\\..\\game.exe", null);
         exercise("Capcom preset suffix", "capcom-nesica-sd ", 9002, LOADER32, "G:\\Vampire\\game.exe", null);
+        exercise("BG4 original explicit PCM preset", "battle-gear-4-original", 9008, LOADER32, "G:\\Battle Gear 4\\game.exe", null, BG4);
+        exercise("BG4 mixed-case path", "battle-gear-4-original", 9008, LOADER32.toLowerCase(), "g:\\Battle Gear 4\\GAME.EXE", null, BG4);
+        exercise("BG4 Tuned shared controls and game basename has no preset", "", 9008, LOADER32, "G:\\Battle Gear 4 Tuned\\game.exe", null);
+        exercise("BG4 wrong preset", "classic-640-client", 9008, LOADER32, "G:\\Battle Gear 4\\game.exe", null);
+        exercise("BG4 wrong controls", "battle-gear-4-original", 9005, LOADER32, "G:\\Battle Gear 4\\game.exe", null);
+        exercise("BG4 x64 loader", "battle-gear-4-original", 9008, LOADER64, "G:\\Battle Gear 4\\game.exe", null);
+        exercise("BG4 legacy loader", "battle-gear-4-original", 9008, LOADER32.replace("Win32", "Win32Legacy"), "G:\\Battle Gear 4\\game.exe", null);
+        exercise("BG4 missing loader", "battle-gear-4-original", 9008, null, "G:\\Battle Gear 4\\game.exe", null);
+        exercise("BG4 wrong executable", "battle-gear-4-original", 9008, LOADER32, "G:\\Battle Gear 4\\other.exe", null);
+        exercise("BG4 missing executable", "battle-gear-4-original", 9008, LOADER32, null, null);
+        exercise("BG4 traversal rejected", "battle-gear-4-original", 9008, LOADER32, "G:\\Battle Gear 4\\..\\game.exe", null);
+        exercise("BG4 preset suffix rejected", "battle-gear-4-original ", 9008, LOADER32, "G:\\Battle Gear 4\\game.exe", null);
         exercise("Lupin explicit preset", "lupin3-wine-jvs", 9078, LOADER32, "G:\\Lupin3\\game.exe", null, LUPIN);
         exercise("Lupin mixed-case path", "lupin3-wine-jvs", 9078, LOADER32.toLowerCase(), "g:\\Lupin3\\GAME.EXE", null, LUPIN);
         exercise("Lupin no preset", "", 9078, LOADER32, "G:\\Lupin3\\game.exe", null);

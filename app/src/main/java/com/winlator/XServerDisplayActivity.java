@@ -86,6 +86,7 @@ import com.winlator.teknoparrot.ForwardedInputSessionRegistry;
 import com.winlator.teknoparrot.PreparedSessionActivityLauncher;
 import com.winlator.teknoparrot.PreparedInputIsolation;
 import com.winlator.teknoparrot.PreparedGameExecutablePath;
+import com.winlator.teknoparrot.PreparedBg4DataProjection;
 import com.winlator.teknoparrot.PreparedWinSCardCompatibility;
 import com.winlator.teknoparrot.PreparedWindowsLaunchRegistry;
 import com.winlator.teknoparrot.TeknoParrotBridgeService;
@@ -200,6 +201,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private volatile boolean cxbxrProcessMonitorStarted;
     private volatile boolean preparedGameProcessMonitorStarted;
     private volatile boolean preparedGameStartupMonitorStarted;
+    private PreparedBg4DataProjection.Session preparedBg4DataProjection;
     private File preparedApmPayloadFile;
 
     @Override
@@ -617,6 +619,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         if (environment != null) environment.stopEnvironmentComponents();
         if (hasPreparedWindowsLaunch)
             ProcessHelper.killGuestProcesses();
+        restorePreparedBg4DataProjection();
         restorePreparedWineGStreamerOutputFormat();
         if (hasPreparedWindowsLaunch && !isChangingConfigurations())
             TeknoParrotBridgeService.releasePreparedSession(this, forwardedSessionId);
@@ -657,6 +660,78 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             Log.e(TAG, "Could not expose the prepared scoped Android game folder.", error);
             return false;
         }
+    }
+
+    private boolean preparedBg4GuestsStopped() {
+        for (ProcessHelper.PStat process : ProcessHelper.getChildProcesses()) {
+            if (process.guestProcess && process.state != ProcessHelper.PState.ZOMBIE &&
+                    process.state != ProcessHelper.PState.DEAD)
+                return false;
+        }
+        return true;
+    }
+
+    private boolean awaitPreparedBg4GuestsStopped() {
+        for (int attempt = 0; attempt < 80; attempt++) {
+            if (preparedBg4GuestsStopped()) return true;
+            SystemClock.sleep(25);
+        }
+        return preparedBg4GuestsStopped();
+    }
+
+    private boolean prepareBg4DataProjection() {
+        String game = findPreparedGameExecutable();
+        if (preparedWindowsLaunch == null || !PreparedBg4DataProjection.isEligible(
+                preparedWindowsLaunch.productionBridge, preparedWindowsLaunch.compatibilityPreset,
+                preparedWindowsLaunch.controlsProfileId, preparedWindowsLaunch.executable, game))
+            return true;
+        try {
+            if (!awaitPreparedBg4GuestsStopped())
+                throw new IOException("Previous guests still own the BG4 prefix.");
+            java.util.ArrayList<PreparedBg4DataProjection.Mount> mounts = new java.util.ArrayList<>();
+            for (com.winlator.container.Drive drive : container.drivesIterator())
+                mounts.add(new PreparedBg4DataProjection.Mount(drive.letter, new File(drive.path)));
+            preparedBg4DataProjection = PreparedBg4DataProjection.prepare(
+                rootFS.getRootDir(), container.getRootDir(), container.id,
+                "teknoparrot-x86-v1".equals(container.getExtra("teknoparrotTemplate")),
+                new File(AppUtils.INTERNAL_STORAGE), new File(WineUtils.dosToUnixPath(game, container)),
+                mounts, this::preparedBg4GuestsStopped);
+            preparedBg4DataProjection.activate();
+            Log.i(TAG, "Prepared the original BG4 E:data projection; runtime and game data retained.");
+            return true;
+        }
+        catch (IOException | SecurityException error) {
+            Log.e(TAG, "Could not prepare the original BG4 E:data projection.", error);
+            return false;
+        }
+    }
+
+    private void restorePreparedBg4DataProjection() {
+        if (preparedBg4DataProjection == null) return;
+        try {
+            if (!awaitPreparedBg4GuestsStopped())
+                throw new IOException("Guests still own the BG4 projection; preserving it.");
+            preparedBg4DataProjection.restore();
+            preparedBg4DataProjection = null;
+        }
+        catch (IOException | SecurityException error) {
+            Log.e(TAG, "Retaining BG4 projection evidence after unsafe restore.", error);
+        }
+    }
+
+    private float[] getPreparedPointerViewport() {
+        if (xServerView == null) return null;
+        float[] bounds = xServerView.getRenderer().getPreparedGameViewportBounds(
+            xServerView.getWidth(), xServerView.getHeight());
+        if (bounds == null) return null;
+        int[] surfaceLocation = new int[2];
+        int[] decorLocation = new int[2];
+        xServerView.getLocationInWindow(surfaceLocation);
+        getWindow().getDecorView().getLocationInWindow(decorLocation);
+        return new float[] {
+            bounds[0] + surfaceLocation[0] - decorLocation[0],
+            bounds[1] + surfaceLocation[1] - decorLocation[1], bounds[2], bounds[3]
+        };
     }
 
     private boolean isJusticeLeagueWow64TransitionPreparedLaunch() {
@@ -1341,6 +1416,11 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         // large game can silently contend for CPU, RAM, and swap.
         if (hasPreparedWindowsLaunch)
             ProcessHelper.killGuestProcesses();
+
+        if (!prepareBg4DataProjection()) {
+            runOnUiThread(this::finish);
+            return;
+        }
 
         FileUtils.clear(rootFS.getTmpDir());
 
@@ -2079,6 +2159,15 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         wincomponents = null;
     }
 
+    private boolean shouldAspectFitPreparedOpenParrotWindow(boolean aspectFit) {
+        if (!aspectFit || preparedWindowsLaunch == null || !preparedWindowsLaunch.productionBridge)
+            return false;
+        String executable = preparedWindowsLaunch.executable;
+        return "E:\\TeknoParrotRuntime\\OpenParrotWin32\\OpenParrotLoader.exe".equalsIgnoreCase(executable) ||
+            "E:\\TeknoParrotRuntime\\OpenParrotWin64\\OpenParrotLoader64.exe".equalsIgnoreCase(executable) ||
+            "E:\\TeknoParrotRuntime\\OpenParrotWin32Legacy\\OpenParrotLoader.exe".equalsIgnoreCase(executable);
+    }
+
     private void setupUI() {
         FrameLayout rootView = findViewById(R.id.FLXServerDisplay);
         xServerView = new XServerView(this, xServer);
@@ -2089,6 +2178,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         boolean preparedAspectFit = preparedWindowsLaunch != null &&
             ("aspect-fit".equals(preparedWindowsLaunch.displayMode) ||
              "fullscreen".equals(preparedWindowsLaunch.displayMode));
+        renderer.setPreparedWindowAspectFit(shouldAspectFitPreparedOpenParrotWindow(preparedAspectFit));
         renderer.setForceWindowsFullscreen(
             preparedAspectFit ||
             (shortcut != null && shortcut.getExtra("forceFullscreen", "0").equals("1")));
@@ -2099,6 +2189,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
         xServer.setRenderer(renderer);
         rootView.addView(xServerView);
+        if (forwardedInputBridge != null)
+            forwardedInputBridge.setPointerViewportProvider(this::getPreparedPointerViewport);
         applyPreparedSurfaceFrameRate();
 
         globalCursorSpeed = preferences.getFloat("cursor_speed", 1.0f);
@@ -4732,6 +4824,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         envVars.remove("TP_WINE_LUPIN_JVS");
         envVars.remove("TP_WINE_PUZZLE_BOBBLE_SD");
         envVars.remove("TP_WINE_CAPCOM_NESICA_SD");
+        envVars.remove("TP_WINE_BG4_PRIMARY_PCM");
         envVars.remove("TP_WINE_KOFMIRA_JVS_RECONNECT");
         envVars.remove("TP_WINE_AMAUTH_PRESERVE_CONFIG");
         envVars.remove("TP_WINE_WANGAN_BIND_REDIRECT");
@@ -4764,6 +4857,11 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         if (openParrot32 && preparedWindowsLaunch.controlsProfileId == 9002 &&
             "game.exe".equals(basename) && "capcom-nesica-sd".equals(preset))
             envVars.put("TP_WINE_CAPCOM_NESICA_SD", "1");
+        // Only the original BG4 recipe owns this preset. Tuned shares its
+        // controls and basename but has no preset, so it must not opt in.
+        if (openParrot32 && preparedWindowsLaunch.controlsProfileId == 9008 &&
+            "game.exe".equals(basename) && "battle-gear-4-original".equals(preset))
+            envVars.put("TP_WINE_BG4_PRIMARY_PCM", "1");
         if (openParrot32 && preparedWindowsLaunch.controlsProfileId == 9002 &&
             "game.exe".equals(basename) && "kof-mira-builtin-wined3d".equals(preset))
             envVars.put("TP_WINE_KOFMIRA_JVS_RECONNECT", "1");

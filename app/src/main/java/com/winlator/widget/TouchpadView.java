@@ -78,7 +78,7 @@ public class TouchpadView extends View implements View.OnCapturedPointerListener
 
     private void updateXform(int outerWidth, int outerHeight, int innerWidth, int innerHeight) {
         ViewTransformation viewTransformation = new ViewTransformation();
-        viewTransformation.update(outerWidth, outerHeight, innerWidth, innerHeight);
+        xServer.getRenderer().updateViewTransformation(viewTransformation, outerWidth, outerHeight);
 
         float invAspect = 1.0f / viewTransformation.aspect;
         if (!xServer.getRenderer().isFullscreen()) {
@@ -139,6 +139,9 @@ public class TouchpadView extends View implements View.OnCapturedPointerListener
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
+        // A prepared game's client can resize after the Android surface. Use
+        // the same current viewport inverse as the renderer for each event.
+        updateXform(getWidth(), getHeight(), xServer.screenInfo.width, xServer.screenInfo.height);
         int actionIndex = event.getActionIndex();
         int pointerId = event.getPointerId(actionIndex);
         int actionMasked = event.getActionMasked();

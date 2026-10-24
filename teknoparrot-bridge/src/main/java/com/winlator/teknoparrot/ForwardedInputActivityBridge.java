@@ -33,6 +33,11 @@ public final class ForwardedInputActivityBridge
     private final SparseIntArray stableIdsByAndroidId = new SparseIntArray();
     private final SparseIntArray playersByAndroidId = new SparseIntArray();
     private final SparseArray<short[]> axesByAndroidId = new SparseArray<>();
+    /** Optional complete game-client bounds in Activity decor coordinates. */
+    public interface PointerViewportProvider {
+        float[] getPointerViewport();
+    }
+    private PointerViewportProvider pointerViewportProvider;
     private boolean mapTriggersToExtensionButtons;
     private boolean closed;
 
@@ -70,6 +75,10 @@ public final class ForwardedInputActivityBridge
 
     public void setMapTriggersToExtensionButtons(boolean enabled) {
         mapTriggersToExtensionButtons = enabled;
+    }
+
+    public void setPointerViewportProvider(PointerViewportProvider provider) {
+        pointerViewportProvider = provider;
     }
 
     public void onKeyEvent(KeyEvent event) {
@@ -210,12 +219,23 @@ public final class ForwardedInputActivityBridge
         if (width <= 1 || height <= 1)
             return;
 
+        float[] viewport = pointerViewportProvider != null
+                ? pointerViewportProvider.getPointerViewport() : null;
+        float left = 0.0f, top = 0.0f;
+        float pointerWidth = width, pointerHeight = height;
+        if (isValidPointerViewport(viewport)) {
+            left = viewport[0];
+            top = viewport[1];
+            pointerWidth = viewport[2];
+            pointerHeight = viewport[3];
+        }
+
         int action = event.getActionMasked();
         boolean releaseAll = action == MotionEvent.ACTION_CANCEL;
         if (action == MotionEvent.ACTION_MOVE || releaseAll) {
             for (int index = 0; index < event.getPointerCount(); index++) {
                 if (!isExcluded(event, index, excludedPointerIds))
-                    sendPointer(event, index, width, height, releaseAll);
+                    sendPointer(event, index, left, top, pointerWidth, pointerHeight, releaseAll);
             }
             return;
         }
@@ -227,7 +247,7 @@ public final class ForwardedInputActivityBridge
                     action == MotionEvent.ACTION_POINTER_UP;
             int actionIndex = event.getActionIndex();
             if (!isExcluded(event, actionIndex, excludedPointerIds))
-                sendPointer(event, actionIndex, width, height, released);
+                sendPointer(event, actionIndex, left, top, pointerWidth, pointerHeight, released);
         }
     }
 
@@ -279,8 +299,10 @@ public final class ForwardedInputActivityBridge
     private void sendPointer(
             MotionEvent event,
             int pointerIndex,
-            int width,
-            int height,
+            float left,
+            float top,
+            float width,
+            float height,
             boolean released) {
         long buttons = released ? 0 : Integer.toUnsignedLong(event.getButtonState());
         int source = event.getSource();
@@ -292,12 +314,28 @@ public final class ForwardedInputActivityBridge
                 stableDeviceId(event.getDeviceId(), event.getDevice()),
                 0,
                 event.getToolType(pointerIndex),
-                ForwardedInputMapping.toUnsignedQ16(event.getX(pointerIndex), width),
-                ForwardedInputMapping.toUnsignedQ16(event.getY(pointerIndex), height),
+                normalizePointerCoordinate(event.getX(pointerIndex), left, width),
+                normalizePointerCoordinate(event.getY(pointerIndex), top, height),
                 released ? 0 : ForwardedInputMapping.toUnsignedQ16(event.getPressure(pointerIndex), 2),
                 Integer.toUnsignedLong(event.getPointerId(pointerIndex)),
                 buttons,
                 event.getEventTime() * 1_000_000L);
+    }
+
+    private static boolean isValidPointerViewport(float[] viewport) {
+        return viewport != null && viewport.length == 4 &&
+                Float.isFinite(viewport[0]) && Float.isFinite(viewport[1]) &&
+                Float.isFinite(viewport[2]) && Float.isFinite(viewport[3]) &&
+                viewport[2] > 1.0f && viewport[3] > 1.0f;
+    }
+
+    private static int normalizePointerCoordinate(float value, float origin, float extent) {
+        if (Float.isNaN(value) || extent <= 1.0f)
+            return 0;
+        if (extent == (int)extent)
+            return ForwardedInputMapping.toUnsignedQ16(value - origin, (int)extent);
+        float normalized = Math.max(0.0f, Math.min(1.0f, (value - origin) / (extent - 1.0f)));
+        return Math.round(normalized * 65535.0f);
     }
 
     private long stableDeviceId(int androidDeviceId, InputDevice device) {

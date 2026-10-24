@@ -51,10 +51,12 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     private final Drawable rootCursorDrawable;
     private final ArrayList<RenderableWindow> renderableWindows = new ArrayList<>();
     private boolean forceWindowsFullscreen;
+    private volatile boolean preparedWindowAspectFit;
+    private volatile long preparedContentDimensions;
     private boolean rotatePreparedWindowsCounterClockwise;
     private boolean fullscreen = false;
     private boolean toggleFullscreen = false;
-    protected boolean viewportNeedsUpdate = true;
+    protected volatile boolean viewportNeedsUpdate = true;
     private boolean cursorVisible = true;
     private float cursorScale = 1.0f;
     private int cursorBackColor = 0xffffff;
@@ -102,7 +104,7 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     public void onSurfaceChanged(GL10 gl, int width, int height) {
         surfaceWidth = (short)width;
         surfaceHeight = (short)height;
-        viewTransformation.update(width, height, xServer.screenInfo.width, xServer.screenInfo.height);
+        updateViewTransformation(viewTransformation, width, height);
         viewportNeedsUpdate = true;
     }
 
@@ -125,7 +127,11 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
             if (fullscreen) {
                 GLES20.glViewport(0, 0, surfaceWidth, surfaceHeight);
             }
-            else GLES20.glViewport(viewTransformation.viewOffsetX, viewTransformation.viewOffsetY, viewTransformation.viewWidth, viewTransformation.viewHeight);
+            else {
+                updateViewTransformation(viewTransformation, surfaceWidth, surfaceHeight);
+                GLES20.glViewport(viewTransformation.viewOffsetX, viewTransformation.viewOffsetY,
+                    viewTransformation.viewWidth, viewTransformation.viewHeight);
+            }
             viewportNeedsUpdate = false;
         }
 
@@ -319,7 +325,89 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         try (XLock lock = xServer.lock(XServer.Lockable.WINDOW_MANAGER, XServer.Lockable.DRAWABLE_MANAGER)) {
             renderableWindows.clear();
             collectRenderableWindows(xServer.windowManager.rootWindow, xServer.windowManager.rootWindow.getX(), xServer.windowManager.rootWindow.getY());
+            updatePreparedContentDimensions();
         }
+    }
+
+    private void updatePreparedContentDimensions() {
+        int width = 0;
+        int height = 0;
+        if (preparedWindowAspectFit && forceWindowsFullscreen) {
+            for (RenderableWindow window : renderableWindows) {
+                if (!window.preparedContentCandidate || window.content.isOffscreenStorage()) continue;
+                if (window.rotateCounterClockwise) {
+                    float scale = Math.min(
+                        (float)xServer.screenInfo.width / window.content.height,
+                        (float)xServer.screenInfo.height / window.content.width);
+                    width = Math.max(width, Math.round(window.content.height * scale));
+                    height = Math.max(height, Math.round(window.content.width * scale));
+                }
+                else if (window.fullscreenTransformation != null) {
+                    width = Math.max(width, window.fullscreenTransformation.width);
+                    height = Math.max(height, window.fullscreenTransformation.height);
+                }
+                else {
+                    // A full desktop-sized client has no inner transform. It
+                    // must participate so another window cannot crop it.
+                    width = Math.max(width, window.content.width);
+                    height = Math.max(height, window.content.height);
+                }
+            }
+        }
+        if (width > 0 && height > 0) {
+            float left = (xServer.screenInfo.width - width) * 0.5f;
+            float top = (xServer.screenInfo.height - height) * 0.5f;
+            for (RenderableWindow window : renderableWindows) {
+                if (!window.preparedViewportBlocker || window.content.isOffscreenStorage()) continue;
+                if (window.rootX < left - 1 || window.rootY < top - 1 ||
+                    window.rootX + window.content.width > left + width + 1 ||
+                    window.rootY + window.content.height > top + height + 1) {
+                    // Native dialogs and decorated windows must remain whole.
+                    // Resume client fitting after the overlapping UI closes.
+                    width = height = 0;
+                    break;
+                }
+            }
+        }
+        // Every fullscreen transformation is centered. Their union preserves
+        // every visible client when a game temporarily has several windows.
+        long dimensions = ((long)width << 32) | (height & 0xffffffffL);
+        if (preparedContentDimensions != dimensions) {
+            preparedContentDimensions = dimensions;
+            viewportNeedsUpdate = true;
+        }
+    }
+
+    public void updateViewTransformation(ViewTransformation target, int width, int height) {
+        long dimensions = preparedContentDimensions;
+        if (preparedWindowAspectFit && forceWindowsFullscreen && !fullscreen && dimensions != 0) {
+            target.updateForContent(width, height, xServer.screenInfo.width, xServer.screenInfo.height,
+                (int)(dimensions >>> 32), (int)dimensions);
+        }
+        else target.update(width, height, xServer.screenInfo.width, xServer.screenInfo.height);
+    }
+
+    public void setPreparedWindowAspectFit(boolean enabled) {
+        preparedWindowAspectFit = enabled;
+        viewportNeedsUpdate = true;
+    }
+
+    public float[] getPreparedGameViewportBounds(int width, int height) {
+        long dimensions = preparedContentDimensions;
+        if (!preparedWindowAspectFit || !forceWindowsFullscreen || fullscreen ||
+            dimensions == 0 || width <= 1 || height <= 1)
+            return null;
+        int contentWidth = (int)(dimensions >>> 32);
+        int contentHeight = (int)dimensions;
+        ViewTransformation transformation = new ViewTransformation();
+        transformation.updateForContent(width, height, xServer.screenInfo.width,
+            xServer.screenInfo.height, contentWidth, contentHeight);
+        return new float[]{
+            transformation.viewOffsetX + (xServer.screenInfo.width - contentWidth) * 0.5f * transformation.aspect,
+            transformation.viewOffsetY + (xServer.screenInfo.height - contentHeight) * 0.5f * transformation.aspect,
+            contentWidth * transformation.aspect,
+            contentHeight * transformation.aspect
+        };
     }
 
     private void collectRenderableWindows(Window window, int x, int y) {
@@ -327,6 +415,11 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         if (window != xServer.windowManager.rootWindow && window.attributes.isViewable()) {
             Window parent = window.getParent();
             boolean transparent = window.attributes.isTransparent() || parent.attributes.isTransparent() || parent.isLayered() || window.isLayered();
+            boolean preparedContentCandidate = !window.isDesktopWindow() && window.getType() == Window.Type.NORMAL &&
+                window.hasNoDecorations() && window.getWidth() >= ScreenInfo.MIN_WIDTH &&
+                window.getHeight() >= ScreenInfo.MIN_HEIGHT;
+            boolean preparedViewportBlocker = !window.isDesktopWindow() &&
+                (window.getType() == Window.Type.DIALOG || !window.hasNoDecorations());
 
             if (forceWindowsFullscreen) {
                 short width = window.getWidth();
@@ -358,7 +451,7 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                     y,
                     transparent,
                     fullscreenTransformation,
-                    shouldRotatePreparedWindow(window)));
+                    shouldRotatePreparedWindow(window), preparedContentCandidate, preparedViewportBlocker));
             }
             else renderableWindows.add(new RenderableWindow(
                 window.getContent(),
@@ -366,7 +459,7 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                 y,
                 transparent,
                 null,
-                shouldRotatePreparedWindow(window)));
+                shouldRotatePreparedWindow(window), preparedContentCandidate, preparedViewportBlocker));
         }
 
         if (window.attributes.isRenderSubwindows()) {
@@ -408,6 +501,7 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                 break;
             }
         }
+        updatePreparedContentDimensions();
     }
 
     public void setCursorVisible(boolean cursorVisible) {
