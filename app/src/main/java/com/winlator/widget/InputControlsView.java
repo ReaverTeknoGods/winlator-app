@@ -12,6 +12,7 @@ import android.graphics.PointF;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.media.AudioManager;
+import android.util.SparseArray;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
@@ -66,6 +67,7 @@ public class InputControlsView extends View {
     private boolean showTouchscreenControls = true;
     private boolean hideStickControls = false;
     private InputEventListener inputEventListener;
+    private final SparseArray<PointF> activeTouchPointers = new SparseArray<>();
 
     public InputControlsView(Context context) {
         super(context);
@@ -417,6 +419,10 @@ public class InputControlsView extends View {
         }
 
         if (!editMode && profile != null) {
+            if (event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+                cancelTouchControls(event);
+                return true;
+            }
             int actionIndex = event.getActionIndex();
             int pointerId = event.getPointerId(actionIndex);
             int actionMasked = event.getActionMasked();
@@ -427,6 +433,7 @@ public class InputControlsView extends View {
                 case MotionEvent.ACTION_POINTER_DOWN: {
                     float x = event.getX(actionIndex);
                     float y = event.getY(actionIndex);
+                    activeTouchPointers.put(pointerId, new PointF(x, y));
 
                     touchpadView.setPointerButtonLeftEnabled(true);
                     for (ControlElement element : profile.getElements()) {
@@ -444,6 +451,8 @@ public class InputControlsView extends View {
                         float x = event.getX(i);
                         float y = event.getY(i);
                         int movePointerId = event.getPointerId(i);
+                        PointF activePointer = activeTouchPointers.get(movePointerId);
+                        if (activePointer != null) activePointer.set(x, y);
 
                         handled = false;
                         for (ControlElement element : profile.getElements()) {
@@ -455,8 +464,7 @@ public class InputControlsView extends View {
                     break;
                 }
                 case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_POINTER_UP:
-                case MotionEvent.ACTION_CANCEL: {
+                case MotionEvent.ACTION_POINTER_UP: {
                     float x = event.getX(actionIndex);
                     float y = event.getY(actionIndex);
                     for (ControlElement element : profile.getElements()) {
@@ -465,11 +473,26 @@ public class InputControlsView extends View {
                             handled = true;
                     }
                     if (!handled) touchpadView.onTouchEvent(event);
+                    activeTouchPointers.remove(pointerId);
                     break;
                 }
             }
         }
         return true;
+    }
+
+    private void cancelTouchControls(MotionEvent event) {
+        // CANCEL terminates the entire gesture, even when its event contains
+        // only one pointer. Release every control owned by a tracked finger,
+        // including controls hidden after that finger went down.
+        for (int i = 0; i < activeTouchPointers.size(); i++) {
+            int pointerId = activeTouchPointers.keyAt(i);
+            PointF point = activeTouchPointers.valueAt(i);
+            for (ControlElement element : profile.getElements())
+                element.handleTouchUp(pointerId, point.x, point.y);
+        }
+        activeTouchPointers.clear();
+        touchpadView.onTouchEvent(event);
     }
 
     public boolean onKeyEvent(KeyEvent event) {
