@@ -29,6 +29,7 @@ def main():
     workarounds = repo / "app/src/main/java/com/winlator/core/Win32AppWorkarounds.java"
     helper = repo / "app/src/main/java/com/winlator/teknoparrot/PreparedWinSCardCompatibility.java"
     paths = repo / "app/src/main/java/com/winlator/teknoparrot/PreparedGameExecutablePath.java"
+    otoshu = repo / "app/src/main/java/com/winlator/teknoparrot/PreparedOtoshuApmBuiltin.java"
     source = activity.read_text(encoding="utf-8")
     actual = "\n".join(block(source, signature) for signature in (
         "private boolean prepareTeknoParrotCompatibilityPayload()",
@@ -36,13 +37,15 @@ def main():
     fixture = output / "WinSCardPolicyActivity.java"
     fixture.write_text("""import java.io.*;
 import com.winlator.teknoparrot.PreparedWinSCardCompatibility;
+import com.winlator.teknoparrot.PreparedOtoshuApmBuiltin;
 final class RootFS {
     static final String WINEPREFIX = "home/xuser/.wine";
     final File root; RootFS(File root) { this.root = root; }
     File getRootDir() { return root; }
 }
-final class WinSCardPolicyLaunch { String compatibilityPreset, executable; int controlsProfileId; }
-final class Log { static void e(String tag, String message, Throwable error) {} }
+final class WinSCardPolicyLaunch { String compatibilityPreset, executable, libraryDirectory; int controlsProfileId; }
+final class Log { static void e(String tag, String message, Throwable error) {} static void e(String tag,String message) {} static void i(String tag,String message) {} }
+final class WineUtils { static String dosToUnixPath(String path,Object container) { throw new AssertionError("unexpected Otoshu path translation"); } }
 final class TestAssets {
     byte[] bytes; boolean fail; int opened;
     InputStream open(String name) throws IOException {
@@ -54,11 +57,14 @@ final class TestAssets {
 final class WinSCardPolicyActivity {
     final RootFS rootFS; final TestAssets assets = new TestAssets();
     WinSCardPolicyLaunch preparedWindowsLaunch; String game;
+    PreparedOtoshuApmBuiltin.Stage preparedOtoshuApmBuiltin; Object container;
     static final String TAG = "test";
     WinSCardPolicyActivity(File root, byte[] bytes) { rootFS = new RootFS(root); assets.bytes = bytes; }
     RootFS getRootFs() { return rootFS; }
     TestAssets getAssets() { return assets; }
     String findPreparedGameExecutable() { return game; }
+    File getFilesDir() { throw new AssertionError("unexpected Otoshu files lookup"); }
+    boolean isPreparedDosPathWithinDrive(String path,boolean allowRuntime) { throw new AssertionError("unexpected Otoshu path gate"); }
     boolean prepareApmLoaderSafePayload(boolean is64Bit) { throw new AssertionError("unexpected APM route"); }
     void clearPreparedApmPayload() {}
     boolean prepare() { return prepareTeknoParrotCompatibilityPayload(); }
@@ -86,9 +92,9 @@ final class WinSCardPolicyWorkarounds {
     classes = output / "classes"
     classes.mkdir(exist_ok=True)
     built = subprocess.run([shutil.which("javac"), "-encoding", "UTF-8", "-d", str(classes),
-        *map(str, [annotation, env, paths, helper, test, fixture, workaround_fixture])], capture_output=True, text=True)
+        *map(str, [annotation, env, paths, helper, otoshu, test, fixture, workaround_fixture])], capture_output=True, text=True)
     result = {"scope": "Actual helper, extracted Activity payload selection/copy and Music media branch; offline only",
-        "sources": {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in [activity, workarounds, helper, test]},
+        "sources": {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in [activity, workarounds, helper, otoshu, test]},
         "compile_exit_code": built.returncode, "compile_stdout": built.stdout, "compile_stderr": built.stderr}
     if built.returncode == 0:
         tested = subprocess.run([shutil.which("java"), "-cp", str(classes), "PreparedWinSCardCompatibilityTest"], capture_output=True, text=True)

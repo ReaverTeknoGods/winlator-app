@@ -35,6 +35,7 @@ activity=A.read_text(encoding='utf-8')
 service=(B/'TeknoParrotBridgeService.java').read_text(encoding='utf-8')
 destroy=method(activity,'protected void onDestroy()')
 restore=method(activity,'private boolean restorePreparedBg4DataProjection()')
+mahjong=method(activity,'private boolean shouldForwardTaisenMahjongInputs()')
 timer_methods='\n'.join(method(service,x) for x in [
     'private static void requirePreparedCleanupComplete()',
     'public static void completePreparedActivityCleanup(',
@@ -102,7 +103,7 @@ final class XServerDisplayActivity extends Parent {
  void restorePreparedWineGStreamerOutputFormat(){Events.add("gstreamer");}
  void releasePreparedMulticastLock(){Events.add("multicast");}
  boolean isChangingConfigurations(){return recreating;}
-'''+startup+'\n'+destroy+'\n'+restore+'''\n}
+'''+startup+'\n'+destroy+'\n'+restore+'\n'+mahjong+'''\n}
 final class Events {
  static List<String> events=new ArrayList<>();static String failure="";
  static void add(String event){events.add(event);if(failure.equals(event))throw new IllegalStateException(event);}
@@ -115,6 +116,8 @@ final class Resource {
  void stop(){Events.add(name);}
  void stopEnvironmentComponents(){Events.add(name);}
  void setMapTriggersToExtensionButtons(boolean value){Events.add("map-triggers");}
+ boolean mahjongKeys;int mahjongMapCalls;
+ void setMapMahjongKeys(boolean value){mahjongKeys=value;mahjongMapCalls++;}
 }
 final class AppUtils {static void setActivityTheme(Object activity){Events.add("theme");}}
 final class Projection {
@@ -164,7 +167,7 @@ final class ForwardedInputSessionRegistry {
 }
 final class PreparedWindowsLaunchRegistry {
  static boolean available=true;static boolean production=true;
- static final class Launch {boolean productionBridge=production;int controlsProfileId=9033;}
+ static final class Launch {boolean productionBridge=production;int controlsProfileId=9033;String compatibilityPreset,executable;}
  static Launch find(String id){return available?new Launch():null;}
  static void unregister(String id){}static void register(String id,ActivityLaunchContract.Request r,SessionContract.PreparedRequest p,String page){}
 }

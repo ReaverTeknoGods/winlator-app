@@ -1635,6 +1635,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                     envVars.put("TP_BORDERLESS_WINDOW", "1");
                     envVars.put("TP_CENTER_WINDOW", "1");
                 }
+                else if (shouldUsePreparedHauntedMuseumBorderlessAspectFit()) {
+                    envVars.put("TP_BORDERLESS_WINDOW", "1");
+                    envVars.put("TP_CENTER_WINDOW", "1");
+                }
                 else {
                     envVars.remove("TP_BORDERLESS_WINDOW");
                     envVars.remove("TP_CENTER_WINDOW");
@@ -2263,6 +2267,17 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             (preparedWindowsLaunch.controlsProfileId == 9014 ||
              preparedWindowsLaunch.controlsProfileId == 9013) &&
             "portrait-window-counter-clockwise".equals(preparedWindowsLaunch.compatibilityPreset) &&
+            "aspect-fit".equals(preparedWindowsLaunch.displayMode) &&
+            "E:\\TeknoParrotRuntime\\OpenParrotWin32\\OpenParrotLoader.exe".equalsIgnoreCase(
+                preparedWindowsLaunch.executable);
+    }
+
+    private boolean shouldUsePreparedHauntedMuseumBorderlessAspectFit() {
+        // Reuse the clean centered-mode client presentation for this exact
+        // prepared gun title. Client resolution and guest D3D mode stay intact.
+        return preparedWindowsLaunch != null && preparedWindowsLaunch.productionBridge &&
+            preparedWindowsLaunch.controlsProfileId == 9061 &&
+            "shared-jvs-dual-io".equals(preparedWindowsLaunch.compatibilityPreset) &&
             "aspect-fit".equals(preparedWindowsLaunch.displayMode) &&
             "E:\\TeknoParrotRuntime\\OpenParrotWin32\\OpenParrotLoader.exe".equalsIgnoreCase(
                 preparedWindowsLaunch.executable);
