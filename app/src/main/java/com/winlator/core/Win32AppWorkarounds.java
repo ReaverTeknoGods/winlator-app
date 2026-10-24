@@ -3,6 +3,7 @@ package com.winlator.core;
 import com.winlator.XServerDisplayActivity;
 import com.winlator.container.Container;
 import com.winlator.container.DXWrappers;
+import com.winlator.teknoparrot.PreparedWinSCardCompatibility;
 import com.winlator.winhandler.OnPreExecListener;
 import com.winlator.winhandler.WinEnums;
 import com.winlator.winhandler.WinHandler;
@@ -247,6 +248,10 @@ public class Win32AppWorkarounds implements OnPreExecListener {
                 envVars.put(
                     "GST_REGISTRY",
                     "/tmp/gstreamer-music-gungun2-registry.bin");
+                if (activity.requiresPreparedWinSCardPayload())
+                    envVars.put("WINEDLLOVERRIDES",
+                        PreparedWinSCardCompatibility.withNativeOverride(
+                            envVars.get("WINEDLLOVERRIDES")));
             });
         }
         else if (compatibilityPreset.equals("post-start-remote-thread")) {

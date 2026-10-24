@@ -47,6 +47,10 @@ final class ActivityLaunchContract {
         "en-eins-native-fullscreen";
     static final String COMPATIBILITY_PRESET_MUSIC_GUNGUN_NATIVE_FULLSCREEN =
         "music-gungun-native-fullscreen";
+    static final String COMPATIBILITY_PRESET_CLASSIC_640_CLIENT = "classic-640-client";
+    static final String COMPATIBILITY_PRESET_LUPIN3_WINE_JVS = "lupin3-wine-jvs";
+    static final String COMPATIBILITY_PRESET_PUZZLE_BOBBLE_SD = "puzzle-bobble-sd";
+    static final String COMPATIBILITY_PRESET_CAPCOM_NESICA_SD = "capcom-nesica-sd";
     static final String COMPATIBILITY_PRESET_BATTLE_GEAR_4_ORIGINAL =
         "battle-gear-4-original";
     static final String COMPATIBILITY_PRESET_JUSTICE_LEAGUE_WOW64_TRANSITION =
@@ -284,6 +288,10 @@ final class ActivityLaunchContract {
             !COMPATIBILITY_PRESET_DIRTY_DRIVING_FULLSCREEN.equals(value) &&
             !COMPATIBILITY_PRESET_EN_EINS_NATIVE_FULLSCREEN.equals(value) &&
             !COMPATIBILITY_PRESET_MUSIC_GUNGUN_NATIVE_FULLSCREEN.equals(value) &&
+            !COMPATIBILITY_PRESET_CLASSIC_640_CLIENT.equals(value) &&
+            !COMPATIBILITY_PRESET_LUPIN3_WINE_JVS.equals(value) &&
+            !COMPATIBILITY_PRESET_PUZZLE_BOBBLE_SD.equals(value) &&
+            !COMPATIBILITY_PRESET_CAPCOM_NESICA_SD.equals(value) &&
             !COMPATIBILITY_PRESET_BATTLE_GEAR_4_ORIGINAL.equals(value) &&
             !COMPATIBILITY_PRESET_JUSTICE_LEAGUE_WOW64_TRANSITION.equals(value) &&
             !COMPATIBILITY_PRESET_FNF_DRIFT_WOW64_TRANSITION.equals(value) &&

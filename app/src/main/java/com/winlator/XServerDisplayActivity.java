@@ -85,6 +85,8 @@ import com.winlator.teknoparrot.ForwardedInputProtocol;
 import com.winlator.teknoparrot.ForwardedInputSessionRegistry;
 import com.winlator.teknoparrot.PreparedSessionActivityLauncher;
 import com.winlator.teknoparrot.PreparedInputIsolation;
+import com.winlator.teknoparrot.PreparedGameExecutablePath;
+import com.winlator.teknoparrot.PreparedWinSCardCompatibility;
 import com.winlator.teknoparrot.PreparedWindowsLaunchRegistry;
 import com.winlator.teknoparrot.TeknoParrotBridgeService;
 import com.winlator.services.ForegroundService;
@@ -1476,7 +1478,13 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 // windowed mode, but ask the native launch bootstrap to remove
                 // Win32 non-client chrome and continuously center the client.
                 // The bootstrap preserves the game's original client size.
-                if ("centered".equals(preparedWindowsLaunch.displayMode)) {
+                boolean classic640Client = "classic-640-client".equals(
+                    preparedWindowsLaunch.compatibilityPreset);
+                if (classic640Client)
+                    envVars.put("TP_ANDROID_CLASSIC_640_CLIENT", "1");
+                else
+                    envVars.remove("TP_ANDROID_CLASSIC_640_CLIENT");
+                if (classic640Client || "centered".equals(preparedWindowsLaunch.displayMode)) {
                     envVars.put("TP_BORDERLESS_WINDOW", "1");
                     envVars.put("TP_CENTER_WINDOW", "1");
                 }
@@ -1630,16 +1638,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 }
 
                 if ("initial-d8".equals(preparedWindowsLaunch.compatibilityPreset)) {
-                    String gameExecutable = null;
-                    for (int index = preparedWindowsLaunch.arguments.length - 1;
-                         index >= 0; index--) {
-                        String candidate = preparedWindowsLaunch.arguments[index];
-                        if (candidate != null &&
-                            candidate.matches("(?i)^[CDE]:\\\\[^/\"]+\\.exe$")) {
-                            gameExecutable = candidate;
-                            break;
-                        }
-                    }
+                    String gameExecutable = findPreparedGameExecutable();
                     if (gameExecutable != null) {
                         envVars.put(
                             "TP_PRELAUNCH_EXECUTABLE",
@@ -1655,6 +1654,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                         !useCardService && !useTaikoAuthService) {
                     envVars.remove("TP_PRELAUNCH_EXECUTABLE");
                 }
+
+                applyPreparedOpenParrotWineOptIns(envVars);
 
                 if (isPreparedElfLoaderLaunch()) {
                     // ElfLoader loads its matching TeknoParrot DLL itself after
@@ -2899,18 +2900,29 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             return prepareApmLoaderSafePayload(is64BitApm);
         clearPreparedApmPayload();
 
-        if (!"taito-legacy-scard".equals(preparedWindowsLaunch.compatibilityPreset))
+        if (!requiresPreparedWinSCardPayload())
             return true;
 
         File destination = new File(
             rootFS.getRootDir(),
             RootFS.WINEPREFIX + "/drive_c/windows/syswow64/winscard.dll");
-        FileUtils.copy(this, "teknoparrot/winscard-x86.dll", destination);
-        if (!destination.isFile() || destination.length() == 0) {
-            Log.e(TAG, "Could not install the TeknoParrot WinSCard compatibility payload.");
+        try (java.io.InputStream asset = getAssets().open("teknoparrot/winscard-x86.dll")) {
+            PreparedWinSCardCompatibility.install(asset, destination);
+        }
+        catch (IOException | SecurityException error) {
+            Log.e(TAG, "Could not install the TeknoParrot WinSCard compatibility payload.", error);
             return false;
         }
         return true;
+    }
+
+    public boolean requiresPreparedWinSCardPayload() {
+        return preparedWindowsLaunch != null &&
+            PreparedWinSCardCompatibility.requiresPayload(
+                preparedWindowsLaunch.compatibilityPreset,
+                preparedWindowsLaunch.controlsProfileId,
+                preparedWindowsLaunch.executable,
+                findPreparedGameExecutable());
     }
 
     private boolean prepareApmLoaderSafePayload(boolean is64BitApm) {
@@ -3323,15 +3335,16 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     }
 
     private String findPreparedGameExecutable() {
-        boolean allowExtensionlessElf = isPreparedElfLoaderLaunch();
-        for (int index = preparedWindowsLaunch.arguments.length - 1; index >= 0; index--) {
-            String candidate = preparedWindowsLaunch.arguments[index];
-            if (candidate == null || !candidate.matches("(?i)^[CDE]:\\\\[^/\"]+$"))
-                continue;
-            if (allowExtensionlessElf || candidate.toLowerCase(java.util.Locale.ROOT).endsWith(".exe"))
-                return candidate;
-        }
-        return null;
+        int index = findPreparedGameExecutableArgument();
+        return index >= 0 ? preparedWindowsLaunch.arguments[index] : null;
+    }
+
+    private int findPreparedGameExecutableArgument() {
+        if (preparedWindowsLaunch == null || container == null)
+            return -1;
+        return PreparedGameExecutablePath.findArgumentIndex(
+            preparedWindowsLaunch.arguments, isPreparedElfLoaderLaunch(),
+            dosPath -> WineUtils.dosToUnixPath(dosPath, container));
     }
 
     /**
@@ -3686,14 +3699,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
      */
     private TeknoParrotWinePreflightComponent createChaseHq2WinePreflight(
             EnvVars sourceEnvVars, String box64Preset) {
-        String gameExecutable = null;
-        for (int index = preparedWindowsLaunch.arguments.length - 1; index >= 0; index--) {
-            String candidate = preparedWindowsLaunch.arguments[index];
-            if (candidate != null && candidate.matches("(?i)^[CDE]:\\\\[^/\"]+\\.exe$")) {
-                gameExecutable = candidate;
-                break;
-            }
-        }
+        String gameExecutable = findPreparedGameExecutable();
         if (gameExecutable == null) {
             Log.e(TAG, "Chase H.Q. 2 has no validated game executable for codec setup.");
             return null;
@@ -4017,14 +4023,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             !"dirty-driving-fullscreen".equals(preset))
             return true;
 
-        int executableArgument = -1;
-        for (int index = preparedWindowsLaunch.arguments.length - 1; index >= 0; index--) {
-            String candidate = preparedWindowsLaunch.arguments[index];
-            if (candidate != null && candidate.matches("(?i)^[CDE]:\\\\[^/\"]+\\.exe$")) {
-                executableArgument = index;
-                break;
-            }
-        }
+        int executableArgument = findPreparedGameExecutableArgument();
         if (executableArgument < 0)
             return false;
 
@@ -4110,14 +4109,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 preparedWindowsLaunch.compatibilityPreset))
             return true;
 
-        int executableArgument = -1;
-        for (int index = preparedWindowsLaunch.arguments.length - 1; index >= 0; index--) {
-            String candidate = preparedWindowsLaunch.arguments[index];
-            if (candidate != null && candidate.matches("(?i)^[CDE]:\\\\[^/\"]+\\.exe$")) {
-                executableArgument = index;
-                break;
-            }
-        }
+        int executableArgument = findPreparedGameExecutableArgument();
         if (executableArgument < 0)
             return false;
 
@@ -4302,14 +4294,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         if (!isMarioKartDxPreparedLaunch())
             return true;
 
-        int executableArgument = -1;
-        for (int index = preparedWindowsLaunch.arguments.length - 1; index >= 0; index--) {
-            String candidate = preparedWindowsLaunch.arguments[index];
-            if (candidate != null && candidate.matches("(?i)^[CDE]:\\\\[^/\"]+\\.exe$")) {
-                executableArgument = index;
-                break;
-            }
-        }
+        int executableArgument = findPreparedGameExecutableArgument();
         if (executableArgument < 0)
             return false;
 
@@ -4500,6 +4485,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 "music-gungun-native-fullscreen".equals(
                     preparedWindowsLaunch.compatibilityPreset);
             String windowedValue =
+                "classic-640-client".equals(preparedWindowsLaunch.compatibilityPreset) ? "1" :
                 ("fullscreen".equals(preparedWindowsLaunch.displayMode) ||
                  useNativeGuestFullscreen) ? "0" : "1";
             List<String> result = new ArrayList<>(
@@ -4741,6 +4727,64 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         }
     }
 
+    private void applyPreparedOpenParrotWineOptIns(EnvVars envVars) {
+        // Container custom variables must not leak an opt-in into another title.
+        envVars.remove("TP_WINE_LUPIN_JVS");
+        envVars.remove("TP_WINE_PUZZLE_BOBBLE_SD");
+        envVars.remove("TP_WINE_CAPCOM_NESICA_SD");
+        envVars.remove("TP_WINE_KOFMIRA_JVS_RECONNECT");
+        envVars.remove("TP_WINE_AMAUTH_PRESERVE_CONFIG");
+        envVars.remove("TP_WINE_WANGAN_BIND_REDIRECT");
+        if (preparedWindowsLaunch == null)
+            return;
+        String game = findPreparedGameExecutable();
+        if (!PreparedGameExecutablePath.isCanonicalDosPath(game, false))
+            return;
+        String basename = game.substring(game.lastIndexOf('\\') + 1)
+            .toLowerCase(java.util.Locale.ROOT);
+        String loader = preparedWindowsLaunch.executable != null
+            ? preparedWindowsLaunch.executable.toLowerCase(java.util.Locale.ROOT) : "";
+        boolean openParrot32 = loader.endsWith(
+            "\\openparrotwin32\\openparrotloader.exe");
+        boolean openParrot64 = loader.endsWith(
+            "\\openparrotwin64\\openparrotloader64.exe");
+        String preset = preparedWindowsLaunch.compatibilityPreset;
+        // TPUI validates this explicit preset against Lupin3, jvs-lupin3 and
+        // layout 9078 before creating the prepared Activity envelope.
+        if (openParrot32 && preparedWindowsLaunch.controlsProfileId == 9078 &&
+            "game.exe".equals(basename) && "lupin3-wine-jvs".equals(preset))
+            envVars.put("TP_WINE_LUPIN_JVS", "1");
+        // Select the native SD renderer. Do not resize or crop its window;
+        // the read-only geometry probe must first establish its real client.
+        if (openParrot32 && preparedWindowsLaunch.controlsProfileId == 9005 &&
+            "game.exe".equals(basename) && "puzzle-bobble-sd".equals(preset))
+            envVars.put("TP_WINE_PUZZLE_BOBBLE_SD", "1");
+        // The recipe validator restricts this preset to the two verified
+        // Capcom NESiCA executables. Their native SD path needs no resize hook.
+        if (openParrot32 && preparedWindowsLaunch.controlsProfileId == 9002 &&
+            "game.exe".equals(basename) && "capcom-nesica-sd".equals(preset))
+            envVars.put("TP_WINE_CAPCOM_NESICA_SD", "1");
+        if (openParrot32 && preparedWindowsLaunch.controlsProfileId == 9002 &&
+            "game.exe".equals(basename) && "kof-mira-builtin-wined3d".equals(preset))
+            envVars.put("TP_WINE_KOFMIRA_JVS_RECONNECT", "1");
+
+        // Only the already prepared, dump-local Taiko companion inherits this
+        // flag. Do not add an AMAuth prelaunch for WMMT6R or Tekken here.
+        String taikoAuth = game.substring(0, game.lastIndexOf('\\')) +
+            "\\AMCUS\\AMAuthd.exe";
+        if (openParrot64 && preparedWindowsLaunch.controlsProfileId == 9022 &&
+            "taiko.exe".equals(basename) && "taiko-custom-resolution".equals(preset) &&
+            taikoAuth.equalsIgnoreCase(envVars.get("TP_PRELAUNCH_EXECUTABLE")))
+            envVars.put("TP_WINE_AMAUTH_PRESERVE_CONFIG", "1");
+
+        // All public 5/5DX/5DXPlus recipes use wmn5r.exe. The wmn6r.exe
+        // basename and controls id are shared by 6/6R/6RR, so they cannot
+        // safely select the older public-core network opt-in here.
+        if (openParrot64 && preparedWindowsLaunch.controlsProfileId == 9012 &&
+            "wmn5r.exe".equals(basename) && isWmmtCompatibilityPreset(preset))
+            envVars.put("TP_WINE_WANGAN_BIND_REDIRECT", "1");
+    }
+
     private static boolean isWmmtCompatibilityPreset(String compatibilityPreset) {
         return "wmmt-terminal".equals(compatibilityPreset) ||
             "wmmt-no-terminal".equals(compatibilityPreset);
@@ -4767,17 +4811,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
     private boolean isPreparedDosPathWithinDrive(String dosPath, boolean directory)
             throws IOException {
-        String unixPath = WineUtils.dosToUnixPath(dosPath, container);
-        String driveRootPath = WineUtils.dosToUnixPath(dosPath.substring(0, 3), container);
-        if (unixPath.isEmpty() || driveRootPath.isEmpty())
-            return false;
-
-        File candidate = new File(unixPath).getCanonicalFile();
-        File driveRoot = new File(driveRootPath).getCanonicalFile();
-        String root = driveRoot.getPath();
-        String path = candidate.getPath();
-        boolean contained = path.equals(root) || path.startsWith(root + File.separator);
-        return contained && (directory ? candidate.isDirectory() : candidate.isFile());
+        return PreparedGameExecutablePath.isWithinMappedDrive(dosPath, directory,
+            dosValue -> WineUtils.dosToUnixPath(dosValue, container));
     }
 
     private static String quotePreparedWindowsArgument(String value) {

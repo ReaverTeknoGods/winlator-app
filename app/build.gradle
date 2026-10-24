@@ -178,6 +178,16 @@ task verifyTeknoParrotWinSCardStub {
             throw new GradleException(
                 "Missing WinSCard compatibility stub: ${teknoParrotWinSCardSource}. " +
                 'Build native/teknoparrot-bridge before the Android package.')
+        if (teknoParrotWinSCardSource.isFile() &&
+            teknoParrotLegacyWinSCardAsset.isFile() &&
+            !java.security.MessageDigest.isEqual(
+                java.security.MessageDigest.getInstance('SHA-256').digest(
+                    teknoParrotWinSCardSource.bytes),
+                java.security.MessageDigest.getInstance('SHA-256').digest(
+                    teknoParrotLegacyWinSCardAsset.bytes)))
+            throw new GradleException(
+                'The tracked WinSCard asset differs from the built native payload. ' +
+                'Update that exact asset from native/teknoparrot-bridge/bin/winscard-x86.dll.')
     }
 }
 
