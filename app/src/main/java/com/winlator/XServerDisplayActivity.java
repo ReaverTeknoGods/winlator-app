@@ -87,6 +87,7 @@ import com.winlator.teknoparrot.PreparedSessionActivityLauncher;
 import com.winlator.teknoparrot.PreparedInputIsolation;
 import com.winlator.teknoparrot.PreparedGameExecutablePath;
 import com.winlator.teknoparrot.PreparedBg4DataProjection;
+import com.winlator.teknoparrot.PreparedOtoshuApmBuiltin;
 import com.winlator.teknoparrot.PreparedWinSCardCompatibility;
 import com.winlator.teknoparrot.PreparedWindowsLaunchRegistry;
 import com.winlator.teknoparrot.TeknoParrotBridgeService;
@@ -203,6 +204,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private volatile boolean preparedGameStartupMonitorStarted;
     private PreparedBg4DataProjection.Session preparedBg4DataProjection;
     private File preparedApmPayloadFile;
+    private PreparedOtoshuApmBuiltin.Stage preparedOtoshuApmBuiltin;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -2138,6 +2140,27 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             envVars.putAll(overrideEnvVars);
             overrideEnvVars = null;
         }
+        if (preparedOtoshuApmBuiltin != null) {
+            try {
+                String gameDosPath = findPreparedGameExecutable();
+                if (preparedWindowsLaunch == null || !PreparedOtoshuApmBuiltin.matches(
+                        preparedWindowsLaunch.compatibilityPreset,
+                        preparedWindowsLaunch.controlsProfileId,
+                        preparedWindowsLaunch.libraryDirectory,
+                        preparedWindowsLaunch.executable, gameDosPath) ||
+                        !isPreparedDosPathWithinDrive(gameDosPath, false))
+                    throw new IOException("The Otoshu route changed before Wine startup.");
+                String directory = preparedOtoshuApmBuiltin.hostSearchDirectory();
+                envVars.put("WINEDLLPATH", PreparedOtoshuApmBuiltin.composeSearchPath(
+                    directory, envVars.get("WINEDLLPATH")));
+                envVars.put("WINEDLLOVERRIDES", PreparedOtoshuApmBuiltin.composeOverrides(
+                    envVars.get("WINEDLLOVERRIDES")));
+            } catch (IOException | SecurityException error) {
+                Log.e(TAG, "The owned Otoshu APM builtin changed before Wine startup.", error);
+                runOnUiThread(this::finish);
+                return;
+            }
+        }
         try {
             environment.startEnvironmentComponents();
         }
@@ -2979,8 +3002,36 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     }
 
     private boolean prepareTeknoParrotCompatibilityPayload() {
+        // Drop only the per-launch reference; all earlier owned roots are retained.
+        preparedOtoshuApmBuiltin = null;
         if (preparedWindowsLaunch == null)
             return true;
+
+        // Only the exact Otoshu candidate uses the source-built builtin.
+        // GGS/BBTAG/Xrd and ordinary launches keep their existing policy.
+        if ("otoshu-apm3-loader-safe".equals(preparedWindowsLaunch.compatibilityPreset)) {
+            String gameDosPath = findPreparedGameExecutable();
+            try {
+                if (!PreparedOtoshuApmBuiltin.matches(
+                        preparedWindowsLaunch.compatibilityPreset,
+                        preparedWindowsLaunch.controlsProfileId,
+                        preparedWindowsLaunch.libraryDirectory,
+                        preparedWindowsLaunch.executable, gameDosPath) ||
+                        !isPreparedDosPathWithinDrive(gameDosPath, false)) {
+                    Log.e(TAG, "The exact Otoshu APM builtin route was not approved.");
+                    return false;
+                }
+                try (java.io.InputStream asset = getAssets().open(PreparedOtoshuApmBuiltin.ASSET)) {
+                    File game = new File(WineUtils.dosToUnixPath(gameDosPath, container)).getCanonicalFile();
+                    preparedOtoshuApmBuiltin = PreparedOtoshuApmBuiltin.prepare(getFilesDir(), game, asset);
+                    Log.i(TAG, "Prepared the source-built Otoshu APM builtin; gameplay remains untested.");
+                    return true;
+                }
+            } catch (IOException | SecurityException error) {
+                Log.e(TAG, "Could not prepare the exact Otoshu APM builtin.", error);
+                return false;
+            }
+        }
 
         boolean is64BitApm = "ggs-apm3-loader-safe".equals(
                 preparedWindowsLaunch.compatibilityPreset) ||
