@@ -1647,6 +1647,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                     envVars.remove("TP_BORDERLESS_WINDOW");
                     envVars.remove("TP_CENTER_WINDOW");
                 }
+                if (shouldUsePreparedTaisenClientPreservation())
+                    envVars.put("TP_ANDROID_TAISEN_PRESERVE_CLIENT", "1");
+                else
+                    envVars.remove("TP_ANDROID_TAISEN_PRESERVE_CLIENT");
                 envVars.remove("TP_CRUISN_USE_REGAL");
                 if (preparedWindowsLaunch.controlsProfileId == 9008)
                     envVars.put("TP_HIDE_WINDOW_MENU", "1");
@@ -2294,6 +2298,18 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             preparedWindowsLaunch.controlsProfileId == 9079 &&
             "taito-legacy-scard".equals(preparedWindowsLaunch.compatibilityPreset) &&
             "aspect-fit".equals(preparedWindowsLaunch.displayMode) &&
+            "E:\\TeknoParrotRuntime\\OpenParrotWin32\\OpenParrotLoader.exe".equalsIgnoreCase(
+                preparedWindowsLaunch.executable);
+    }
+
+    private boolean shouldUsePreparedTaisenClientPreservation() {
+        // The measured cached-outer/client race can occur in either prepared
+        // display mode. Keep borderless and window-position policy separate.
+        return preparedWindowsLaunch != null && preparedWindowsLaunch.productionBridge &&
+            preparedWindowsLaunch.controlsProfileId == 9079 &&
+            "taito-legacy-scard".equals(preparedWindowsLaunch.compatibilityPreset) &&
+            ("centered".equals(preparedWindowsLaunch.displayMode) ||
+             "aspect-fit".equals(preparedWindowsLaunch.displayMode)) &&
             "E:\\TeknoParrotRuntime\\OpenParrotWin32\\OpenParrotLoader.exe".equalsIgnoreCase(
                 preparedWindowsLaunch.executable);
     }

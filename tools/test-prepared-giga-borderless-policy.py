@@ -24,6 +24,7 @@ def run(root):
     helper = method(source, '    private boolean shouldUsePreparedPortraitBorderlessAspectFit()')
     helper += '\n' + method(source, '    private boolean shouldUsePreparedHauntedMuseumBorderlessAspectFit()')
     helper += '\n' + method(source, '    private boolean shouldUsePreparedTaisenMahjongBorderlessAspectFit()')
+    helper += '\n' + method(source, '    private boolean shouldUsePreparedTaisenClientPreservation()')
     start = source.index('                boolean classic640Client =')
     end = source.index('                envVars.remove("TP_CRUISN_USE_REGAL");', start)
     policy = source[start:end]

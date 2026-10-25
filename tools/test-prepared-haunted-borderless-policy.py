@@ -33,7 +33,7 @@ def branch(source):
  return source[start:end]
 
 def activity(name,source,extra=''):
- return 'class '+name+' { Launch preparedWindowsLaunch; '+method(source,'private boolean shouldUsePreparedPortraitBorderlessAspectFit()')+' '+extra+''' java.util.Map<String,String> apply(Launch value){ preparedWindowsLaunch=value; java.util.Map<String,String> envVars=new java.util.HashMap<>();envVars.put("TP_BORDERLESS_WINDOW","old");envVars.put("TP_CENTER_WINDOW","old"); if(value!=null){boolean classic640Client="classic-640-client".equals(value.compatibilityPreset);'''+branch(source)+'} return envVars;} boolean nullGuard(){preparedWindowsLaunch=null;return '+('shouldUsePreparedHauntedMuseumBorderlessAspectFit()'if extra else 'shouldUsePreparedPortraitBorderlessAspectFit()')+';} }'
+ return 'class '+name+' { Launch preparedWindowsLaunch; '+method(source,'private boolean shouldUsePreparedPortraitBorderlessAspectFit()')+' '+extra+''' java.util.Map<String,String> apply(Launch value){ preparedWindowsLaunch=value; java.util.Map<String,String> envVars=new java.util.HashMap<>();envVars.put("TP_BORDERLESS_WINDOW","old");envVars.put("TP_CENTER_WINDOW","old");envVars.put("TP_ANDROID_TAISEN_PRESERVE_CLIENT","stale"); if(value!=null){boolean classic640Client="classic-640-client".equals(value.compatibilityPreset);'''+branch(source)+'} return envVars;} boolean nullGuard(){preparedWindowsLaunch=null;return '+('shouldUsePreparedHauntedMuseumBorderlessAspectFit()'if extra else 'shouldUsePreparedPortraitBorderlessAspectFit()')+';} }'
 
 def run(root,output,activity_source=None):
  root=root.resolve();source=activity_source or root/RELATIVE;object_name=BASELINE_COMMIT+':'+RELATIVE
@@ -45,6 +45,8 @@ def run(root,output,activity_source=None):
  taisen='private boolean shouldUsePreparedTaisenMahjongBorderlessAspectFit()'
  # Absent on the real pre-policy source: compile it, then fail the new positive checks.
  taisen_extra=method(after,taisen) if taisen in after else ''
+ client='private boolean shouldUsePreparedTaisenClientPreservation()'
+ client_extra=method(after,client) if client in after else ''
  if method(before,portrait)!=method(after,portrait):raise RuntimeError('Portrait helper must remain identical')
  output.mkdir(parents=True,exist_ok=True)
  code=r'''
@@ -68,6 +70,9 @@ def run(root,output,activity_source=None):
     Launch v=new Launch();v.controlsProfileId=id;v.compatibilityPreset=preset;v.displayMode=mode;v.executable=exe;v.productionBridge=production;
     Map<String,String>a=old.apply(v),b=candidate.apply(v);boolean exact=production&&id==9061&&"shared-jvs-dual-io".equals(preset)&&"aspect-fit".equals(mode)&&x86.equalsIgnoreCase(exe);
     boolean taisenExact=production&&id==9079&&"taito-legacy-scard".equals(preset)&&"aspect-fit".equals(mode)&&x86.equalsIgnoreCase(exe);
+    boolean clientExact=production&&id==9079&&"taito-legacy-scard".equals(preset)&&("centered".equals(mode)||"aspect-fit".equals(mode))&&x86.equalsIgnoreCase(exe);
+    check(clientExact?"1".equals(b.get("TP_ANDROID_TAISEN_PRESERVE_CLIENT")):!b.containsKey("TP_ANDROID_TAISEN_PRESERVE_CLIENT"),"only exact Taisen centered/aspect-fit sets client preservation; stale optin removed otherwise");
+    a.remove("TP_ANDROID_TAISEN_PRESERVE_CLIENT");b.remove("TP_ANDROID_TAISEN_PRESERVE_CLIENT");
     if(taisenExact){
      check(!a.containsKey("TP_BORDERLESS_WINDOW"),"prechange Taisen borderless absent");
      check(!a.containsKey("TP_CENTER_WINDOW"),"prechange Taisen centering absent");
@@ -86,12 +91,12 @@ def run(root,output,activity_source=None):
    System.out.println("PASS "+assertions+" assertions / "+combinations+" combinations / "+changed+" exact Haunted changes / "+taisenChanged+" exact Taisen changes");
   }
  }
- '''.replace('BASELINE',activity('Baseline',before)).replace('PROPOSED',activity('Proposed',after,method(after,haunted)+taisen_extra))
+ '''.replace('BASELINE',activity('Baseline',before)).replace('PROPOSED',activity('Proposed',after,method(after,haunted)+taisen_extra+client_extra))
  p=output/'HauntedPolicyChecks.java';p.write_text(code,encoding='utf8');classes=output/'classes';classes.mkdir(exist_ok=True)
  built=subprocess.run([tool('javac'),'-encoding','UTF-8','-d',str(classes),str(p)],capture_output=True,text=True)
  if built.returncode:raise RuntimeError(built.stderr)
  test=subprocess.run([tool('java'),'-cp',str(classes),'HauntedPolicyChecks'],capture_output=True,text=True)
- receipt={'scope':'Host actual-method only; no APK/device/game qualification','compile_exit':built.returncode,'test_exit':test.returncode,'stdout':test.stdout,'stderr':test.stderr,'assertions':15125,'combinations':3780,'only_changed_exact_routes':2,'taisen_exact_routes':2,'total_exact_changed_routes':4,'independent_prechange_commit':BASELINE_COMMIT,'independent_prechange_blob':BASELINE_BLOB,'activity_sha256':hashlib.sha256(source.read_bytes()).hexdigest(),'portrait_helper_byte_equal':True}
+ receipt={'scope':'Host actual-method only; no APK/device/game qualification','compile_exit':built.returncode,'test_exit':test.returncode,'stdout':test.stdout,'stderr':test.stderr,'assertions':18905,'original_assertions':15125,'client_optin_assertions':3780,'combinations':3780,'only_changed_exact_routes':2,'taisen_exact_routes':2,'total_exact_changed_routes':4,'independent_prechange_commit':BASELINE_COMMIT,'independent_prechange_blob':BASELINE_BLOB,'activity_sha256':hashlib.sha256(source.read_bytes()).hexdigest(),'portrait_helper_byte_equal':True}
  (output/'result.json').write_text(json.dumps(receipt,indent=2)+'\n',encoding='utf8');print(json.dumps(receipt,indent=2))
  if test.returncode:raise RuntimeError('Haunted policy regression failed')
  return receipt
