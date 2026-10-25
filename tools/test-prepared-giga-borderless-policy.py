@@ -23,6 +23,7 @@ def run(root):
     source = (root / 'app/src/main/java/com/winlator/XServerDisplayActivity.java').read_text(encoding='utf-8')
     helper = method(source, '    private boolean shouldUsePreparedPortraitBorderlessAspectFit()')
     helper += '\n' + method(source, '    private boolean shouldUsePreparedHauntedMuseumBorderlessAspectFit()')
+    helper += '\n' + method(source, '    private boolean shouldUsePreparedTaisenMahjongBorderlessAspectFit()')
     start = source.index('                boolean classic640Client =')
     end = source.index('                envVars.remove("TP_CRUISN_USE_REGAL");', start)
     policy = source[start:end]

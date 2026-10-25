@@ -1639,6 +1639,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                     envVars.put("TP_BORDERLESS_WINDOW", "1");
                     envVars.put("TP_CENTER_WINDOW", "1");
                 }
+                else if (shouldUsePreparedTaisenMahjongBorderlessAspectFit()) {
+                    envVars.put("TP_BORDERLESS_WINDOW", "1");
+                    envVars.put("TP_CENTER_WINDOW", "1");
+                }
                 else {
                     envVars.remove("TP_BORDERLESS_WINDOW");
                     envVars.remove("TP_CENTER_WINDOW");
@@ -2278,6 +2282,17 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         return preparedWindowsLaunch != null && preparedWindowsLaunch.productionBridge &&
             preparedWindowsLaunch.controlsProfileId == 9061 &&
             "shared-jvs-dual-io".equals(preparedWindowsLaunch.compatibilityPreset) &&
+            "aspect-fit".equals(preparedWindowsLaunch.displayMode) &&
+            "E:\\TeknoParrotRuntime\\OpenParrotWin32\\OpenParrotLoader.exe".equalsIgnoreCase(
+                preparedWindowsLaunch.executable);
+    }
+
+    private boolean shouldUsePreparedTaisenMahjongBorderlessAspectFit() {
+        // Preserve the working centered-mode client path for this exact
+        // prepared Mahjong title while fitting its image to the display.
+        return preparedWindowsLaunch != null && preparedWindowsLaunch.productionBridge &&
+            preparedWindowsLaunch.controlsProfileId == 9079 &&
+            "taito-legacy-scard".equals(preparedWindowsLaunch.compatibilityPreset) &&
             "aspect-fit".equals(preparedWindowsLaunch.displayMode) &&
             "E:\\TeknoParrotRuntime\\OpenParrotWin32\\OpenParrotLoader.exe".equalsIgnoreCase(
                 preparedWindowsLaunch.executable);
