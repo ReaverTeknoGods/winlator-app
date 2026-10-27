@@ -403,13 +403,21 @@ public class Win32AppWorkarounds implements OnPreExecListener {
             case "bof4.exe":
                 return (WinComponentsWorkaround) (wincomponents) -> wincomponents.put("directshow", "1");
             case "rally.exe":
-                // SR3 needs Microsoft's ASF reader and WMV decoders, but the
+                // SR3 needs Microsoft's ASF reader and WM runtime, but the
                 // native Quartz renderer prevents the game from mapping its
                 // main window under Wine/Winlator.  Keep Wine's Quartz graph
-                // manager while enabling the native DirectShow/WMV filters.
+                // manager while enabling the native DirectShow/WM filters.
+                // Microsoft's WMV9 decoder DMO deadlocks the intro movie
+                // against the game's D3D9 device lock (Windows 10 1809+ needs
+                // LAV for the same reason), so it is disabled; the prepared
+                // launch registers ffdshow as SR3's WMV3 decoder instead.
                 return new MultiWorkaround(
-                    (WinComponentsWorkaround) (wincomponents) -> wincomponents.put("directshow", "1"),
-                    (EnvVarsWorkaround) (envVars) -> envVars.put("WINEDLLOVERRIDES", "quartz=b"));
+                    (WinComponentsWorkaround) (wincomponents) -> {
+                        wincomponents.put("directshow", "1");
+                        wincomponents.put("wmdecoder", "1");
+                    },
+                    (EnvVarsWorkaround) (envVars) ->
+                        envVars.put("WINEDLLOVERRIDES", "quartz=b;wmvdecod=d"));
             case "discipl2.exe":
                 return (DXWrapperWorkaround) () -> DXWrappers.WINED3D;
             case "cnc3.exe":

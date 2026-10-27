@@ -296,6 +296,11 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             ? preparedWindowsLaunch.debugLoggingEnabled
             : preferences.getBoolean("enable_wine_debug", false) ||
                 preferences.getInt("box64_logs", 0) >= 1;
+        // TPUI's per-game debug switch is the only way to troubleshoot a
+        // prepared launch; Winlator's own settings are not reachable from it.
+        // Always keep that session's log in Documents/Winlator/logs.txt.
+        if (enableLogs && preparedWindowsLaunch != null)
+            preferences.edit().putBoolean("save_logs_to_file", true).commit();
         if (enableLogs) ProcessHelper.addDebugCallback(debugDialog = new DebugDialog(this));
         Menu menu = navigationView.getMenu();
         menu.findItem(R.id.menu_item_logs).setVisible(enableLogs);
@@ -2057,6 +2062,15 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 }
             }
             else if (preparedWindowsLaunch != null && preparedWindowsLaunch.productionBridge &&
+                     isPreparedSegaRally3Launch()) {
+                teknoParrotWinePreflightComponent = createSegaRally3FfdshowWinePreflight(
+                    envVars, box64Preset);
+                if (teknoParrotWinePreflightComponent == null) {
+                    runOnUiThread(this::finish);
+                    return;
+                }
+            }
+            else if (preparedWindowsLaunch != null && preparedWindowsLaunch.productionBridge &&
                      "haunted-museum2-media".equals(
                          resolvePreparedCompatibilityPreset()) &&
                      !configureHauntedMuseumIndeoDriver()) {
@@ -2598,16 +2612,20 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                     (preparedWindowsLaunch.controlsProfileId == 9033 ||
                      preparedWindowsLaunch.controlsProfileId == 9076))
                     forwardedInputBridge.onVirtualButton(
-                            ForwardedInputProtocol.BUTTON_7, isActionDown);
-                forwardedInputBridge.onVirtualAxis(4, isActionDown ? 1.0f : 0.0f);
+                            ForwardedInputProtocol.BUTTON_7,
+                            ForwardedInputMapping.triggerButtonPressed(offset, isActionDown));
+                forwardedInputBridge.onVirtualAxis(
+                        4, ForwardedInputMapping.triggerAxisValue(offset, isActionDown));
                 break;
             case GAMEPAD_BUTTON_R2:
                 if (preparedWindowsLaunch != null &&
                     (preparedWindowsLaunch.controlsProfileId == 9033 ||
                      preparedWindowsLaunch.controlsProfileId == 9076))
                     forwardedInputBridge.onVirtualButton(
-                            ForwardedInputProtocol.BUTTON_8, isActionDown);
-                forwardedInputBridge.onVirtualAxis(5, isActionDown ? 1.0f : 0.0f);
+                            ForwardedInputProtocol.BUTTON_8,
+                            ForwardedInputMapping.triggerButtonPressed(offset, isActionDown));
+                forwardedInputBridge.onVirtualAxis(
+                        5, ForwardedInputMapping.triggerAxisValue(offset, isActionDown));
                 break;
             case GAMEPAD_LEFT_THUMB_LEFT:
                 forwardedInputBridge.onVirtualAxis(
@@ -3817,22 +3835,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         try {
             File winePrefix = new File(rootFS.getRootDir(), RootFS.WINEPREFIX);
             File serviceDirectory = new File(winePrefix, "drive_c/teknoparrot-service");
-            File ffdshowDirectory = new File(serviceDirectory, "ffdshow-x86");
-            if (!ffdshowDirectory.isDirectory() && !ffdshowDirectory.mkdirs())
-                throw new IOException("Could not create the private ffdshow directory.");
-
-            for (String assetName : FFDSHOW_RUNTIME_ASSET_NAMES) {
-                String assetPath = FFDSHOW_ASSET_DIRECTORY + "/" + assetName;
-                long expectedSize = FileUtils.getSize(this, assetPath);
-                File destination = new File(ffdshowDirectory, assetName);
-                if (expectedSize <= 0)
-                    throw new IOException("Missing packaged ffdshow payload " + assetName + '.');
-                if ((!destination.isFile() || destination.length() != expectedSize) &&
-                    !FileUtils.copyAssetAtomic(this, assetPath, destination))
-                    throw new IOException("Could not stage ffdshow payload " + assetName + '.');
-                if (!destination.isFile() || destination.length() != expectedSize)
-                    throw new IOException("Invalid staged ffdshow payload " + assetName + '.');
-            }
+            File ffdshowDirectory = stageFfdshowRuntime(serviceDirectory);
 
             // ffdshow intentionally defaults optional VFW decoders to off.
             // Enable only Indeo 5 so WMV and every unrelated codec keep Wine's
@@ -3865,6 +3868,86 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             Log.e(TAG, "Could not prepare Gaia's Indeo 5 decoder.", error);
             return null;
         }
+    }
+
+    /**
+     * Sega Rally 3 decodes its WMV3 movies with Microsoft's WMVideo Decoder DMO,
+     * which deadlocks against the game's D3D9 device lock during the intro
+     * (Windows 10 1809+ has the same problem and needs LAV for WMV3). Its
+     * Win32 workaround disables wmvdecod; register ffdshow's DirectShow
+     * decoder for WMV3 instead. ffdshow's own application whitelist keeps the
+     * shared-prefix registration inert for every other game, and the
+     * registration is refreshed on every SR3 launch because other titles'
+     * preflights may remove it.
+     */
+    private TeknoParrotWinePreflightComponent createSegaRally3FfdshowWinePreflight(
+            EnvVars sourceEnvVars, String box64Preset) {
+        try {
+            File winePrefix = new File(rootFS.getRootDir(), RootFS.WINEPREFIX);
+            File serviceDirectory = new File(winePrefix, "drive_c/teknoparrot-service");
+            File ffdshowDirectory = stageFfdshowRuntime(serviceDirectory);
+
+            File userRegFile = new File(winePrefix, "user.reg");
+            try (WineRegistryEditor registryEditor =
+                     new WineRegistryEditor(userRegFile)) {
+                String key = "Software\\GNU\\ffdshow";
+                registryEditor.setDwordValue(key, "isWhitelist", 1);
+                registryEditor.setStringValue(key, "whitelist", "rally.exe;");
+                registryEditor.setDwordValue(key, "isBlacklist", 0);
+                registryEditor.setDwordValue(key, "wmv3", 1);
+                registryEditor.setDwordValue(key, "trayIcon", 0);
+            }
+
+            File marker = new File(serviceDirectory, "ffdshow-r4532-sr3-wmv3.flag");
+            TeknoParrotWinePreflightComponent component =
+                new TeknoParrotWinePreflightComponent(
+                    "ffdshow.ax", marker, true, ffdshowDirectory);
+            component.setGuestExecutable(
+                "wine C:\\windows\\syswow64\\regsvr32.exe /s " +
+                "C:\\teknoparrot-service\\ffdshow-x86\\ffdshow.ax");
+            EnvVars preflightEnvVars = new EnvVars();
+            preflightEnvVars.putAll(sourceEnvVars);
+            component.setEnvVars(preflightEnvVars);
+            component.setBox64Preset(box64Preset);
+            return component;
+        }
+        catch (Exception error) {
+            Log.e(TAG, "Could not prepare Sega Rally 3's WMV3 decoder.", error);
+            return null;
+        }
+    }
+
+    private File stageFfdshowRuntime(File serviceDirectory) throws IOException {
+        File ffdshowDirectory = new File(serviceDirectory, "ffdshow-x86");
+        if (!ffdshowDirectory.isDirectory() && !ffdshowDirectory.mkdirs())
+            throw new IOException("Could not create the private ffdshow directory.");
+
+        for (String assetName : FFDSHOW_RUNTIME_ASSET_NAMES) {
+            String assetPath = FFDSHOW_ASSET_DIRECTORY + "/" + assetName;
+            long expectedSize = FileUtils.getSize(this, assetPath);
+            File destination = new File(ffdshowDirectory, assetName);
+            if (expectedSize <= 0)
+                throw new IOException("Missing packaged ffdshow payload " + assetName + '.');
+            if ((!destination.isFile() || destination.length() != expectedSize) &&
+                !FileUtils.copyAssetAtomic(this, assetPath, destination))
+                throw new IOException("Could not stage ffdshow payload " + assetName + '.');
+            if (!destination.isFile() || destination.length() != expectedSize)
+                throw new IOException("Invalid staged ffdshow payload " + assetName + '.');
+        }
+        return ffdshowDirectory;
+    }
+
+    private boolean isPreparedSegaRally3Launch() {
+        if (preparedWindowsLaunch == null)
+            return false;
+        for (String argument : preparedWindowsLaunch.arguments) {
+            if (argument != null &&
+                argument.replace('/', '\\')
+                    .toLowerCase(java.util.Locale.ROOT)
+                    .endsWith("\\rally.exe"))
+                return true;
+        }
+        return false;
     }
 
     /** Selects the native Intel codec shipped with Haunted Museum II. */

@@ -37,8 +37,14 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
     private static final int ELF_PROGRAM_HEADER_TYPE_INTERP = 3;
     private static final String WINE_GSTREAMER_BOX64_ENV = "TP_BOX64_WINEGSTREAMER_FIX";
     private static final String WINE_GSTREAMER_BOX64_NAME = "box64-winegstreamer";
-    private static final long BOX64_GSTREAMER_SET_NEEDED_LIBS_CALL = 0x350C840CL;
-    private static final int BOX64_GSTREAMER_SET_NEEDED_LIBS_INSTRUCTION = 0x97E87C65;
+    // wrappedgstreamer_init's setNeededLibs("libgtk-3.so.0") call, per bundled
+    // Box64 build: 0.4.0, 0.4.4.
+    private static final long[] BOX64_GSTREAMER_SET_NEEDED_LIBS_CALLS = {
+        0x350C840CL, 0x35231D3CL
+    };
+    private static final int[] BOX64_GSTREAMER_SET_NEEDED_LIBS_INSTRUCTIONS = {
+        0x97E87C65, 0x97E4D681
+    };
     private static final int AARCH64_NOP_INSTRUCTION = 0xD503201F;
     private String guestExecutable;
     private int pid = -1;
@@ -217,33 +223,46 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             throws IOException {
         if (!source.isFile() || !patched.isFile() || source.length() != patched.length() ||
             source.lastModified() != patched.lastModified()) return false;
-        return readBox64GStreamerDependencyInstruction(source) ==
-                BOX64_GSTREAMER_SET_NEEDED_LIBS_INSTRUCTION &&
-            readBox64GStreamerDependencyInstruction(patched) == AARCH64_NOP_INSTRUCTION;
+        int site = findBox64GStreamerDependencySite(source);
+        return site >= 0 &&
+            readBox64GStreamerDependencyInstruction(patched, site) == AARCH64_NOP_INSTRUCTION;
     }
 
     private static void patchBox64GStreamerDependency(File executable) throws IOException {
+        int site = findBox64GStreamerDependencySite(executable);
+        if (site < 0)
+            throw new IOException("Unexpected Box64 GStreamer dependency instruction.");
         try (RandomAccessFile file = new RandomAccessFile(executable, "rw")) {
-            long instructionOffset = findElfVirtualAddressFileOffset(
-                file, BOX64_GSTREAMER_SET_NEEDED_LIBS_CALL, Integer.BYTES);
-            file.seek(instructionOffset);
-            int instruction = readIntLE(file);
-            if (instruction != BOX64_GSTREAMER_SET_NEEDED_LIBS_INSTRUCTION)
-                throw new IOException("Unexpected Box64 GStreamer dependency instruction.");
-            file.seek(instructionOffset);
+            file.seek(findElfVirtualAddressFileOffset(
+                file, BOX64_GSTREAMER_SET_NEEDED_LIBS_CALLS[site], Integer.BYTES));
             writeIntLE(file, AARCH64_NOP_INSTRUCTION);
         }
 
-        if (readBox64GStreamerDependencyInstruction(executable) != AARCH64_NOP_INSTRUCTION)
+        if (readBox64GStreamerDependencyInstruction(executable, site) != AARCH64_NOP_INSTRUCTION)
             throw new IOException("Box64 Wine-GStreamer instruction patch did not validate.");
         Log.i(TAG, "Prepared the media-only Box64 Wine-GStreamer executable.");
     }
 
-    private static int readBox64GStreamerDependencyInstruction(File executable)
+    /** Returns the index of the known Box64 build's unpatched GTK call, or -1. */
+    private static int findBox64GStreamerDependencySite(File executable) {
+        for (int site = 0; site < BOX64_GSTREAMER_SET_NEEDED_LIBS_CALLS.length; site++) {
+            try {
+                if (readBox64GStreamerDependencyInstruction(executable, site) ==
+                        BOX64_GSTREAMER_SET_NEEDED_LIBS_INSTRUCTIONS[site])
+                    return site;
+            }
+            catch (IOException ignored) {
+                // The address is outside this Box64 build's loadable segments.
+            }
+        }
+        return -1;
+    }
+
+    private static int readBox64GStreamerDependencyInstruction(File executable, int site)
             throws IOException {
         try (RandomAccessFile file = new RandomAccessFile(executable, "r")) {
             long instructionOffset = findElfVirtualAddressFileOffset(
-                file, BOX64_GSTREAMER_SET_NEEDED_LIBS_CALL, Integer.BYTES);
+                file, BOX64_GSTREAMER_SET_NEEDED_LIBS_CALLS[site], Integer.BYTES);
             file.seek(instructionOffset);
             return readIntLE(file);
         }

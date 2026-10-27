@@ -338,18 +338,30 @@ public class InputControlsView extends View {
         }
     }
 
+    /**
+     * Dispatches a physical L2/R2 binding. Analog-only triggers (AXIS_BRAKE /
+     * AXIS_GAS) never set the digital button bits, so their travel also counts
+     * as a press. Gamepad trigger targets receive the analog value; any other
+     * target keeps button semantics and needs a half press.
+     */
+    private void handleTriggerBinding(ExternalControllerBinding controllerBinding, boolean digitalPressed, float value) {
+        if (controllerBinding == null) return;
+        Binding binding = controllerBinding.getBinding();
+        boolean analogTarget = binding == Binding.GAMEPAD_BUTTON_L2 || binding == Binding.GAMEPAD_BUTTON_R2;
+        boolean pressed = digitalPressed || value > (analogTarget ? ControlElement.STICK_DEAD_ZONE : 0.5f);
+        handleInputEvent(binding, pressed, analogTarget ? value : 0);
+    }
+
     @Override
     public boolean onGenericMotionEvent(MotionEvent event) {
         if (!editMode && profile != null) {
             ExternalController controller = profile.getController(event.getDeviceId());
             if (controller != null && controller.updateStateFromMotionEvent(event)) {
                 GamepadState state = controller.getGamepadState();
-                ExternalControllerBinding controllerBinding;
-                controllerBinding = controller.getControllerBinding(KeyEvent.KEYCODE_BUTTON_L2);
-                if (controllerBinding != null) handleInputEvent(controllerBinding.getBinding(), state.isPressed(ExternalController.IDX_BUTTON_L2));
-
-                controllerBinding = controller.getControllerBinding(KeyEvent.KEYCODE_BUTTON_R2);
-                if (controllerBinding != null) handleInputEvent(controllerBinding.getBinding(), state.isPressed(ExternalController.IDX_BUTTON_R2));
+                handleTriggerBinding(controller.getControllerBinding(KeyEvent.KEYCODE_BUTTON_L2),
+                        state.isPressed(ExternalController.IDX_BUTTON_L2), state.triggerL);
+                handleTriggerBinding(controller.getControllerBinding(KeyEvent.KEYCODE_BUTTON_R2),
+                        state.isPressed(ExternalController.IDX_BUTTON_R2), state.triggerR);
 
                 processJoystickInput(controller);
                 for (android.view.InputDevice.MotionRange range : event.getDevice().getMotionRanges()) {
@@ -548,6 +560,11 @@ public class InputControlsView extends View {
             int buttonIdx = binding.ordinal() - Binding.GAMEPAD_BUTTON_A.ordinal();
             if (buttonIdx <= 11) {
                 state.setPressed(buttonIdx, isActionDown);
+                // setPressed() makes triggers full or empty; keep analog travel.
+                if (isActionDown && offset > 0) {
+                    if (buttonIdx == ExternalController.IDX_BUTTON_L2) state.triggerL = Math.min(offset, 1.0f);
+                    else if (buttonIdx == ExternalController.IDX_BUTTON_R2) state.triggerR = Math.min(offset, 1.0f);
+                }
             }
             else if (binding == Binding.GAMEPAD_LEFT_THUMB_UP || binding == Binding.GAMEPAD_LEFT_THUMB_DOWN) {
                 state.thumbLY = isActionDown ? offset : 0;

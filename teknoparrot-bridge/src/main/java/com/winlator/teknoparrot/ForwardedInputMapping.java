@@ -118,6 +118,22 @@ public final class ForwardedInputMapping {
         return negativeDirection ? -1.0f : 1.0f;
     }
 
+    /**
+     * Analog controller triggers dispatch their 0..1 travel as the offset.
+     * A zero offset is a touchscreen, keyboard, or digital trigger binding and
+     * keeps its full-scale value.
+     */
+    public static float triggerAxisValue(float offset, boolean isActionDown) {
+        if (!isActionDown)
+            return 0.0f;
+        return offset > 0.0f ? Math.min(1.0f, offset) : 1.0f;
+    }
+
+    /** Cabinet buttons fed by an analog trigger need a deliberate half press. */
+    public static boolean triggerButtonPressed(float offset, boolean isActionDown) {
+        return isActionDown && (offset <= 0.0f || offset > 0.5f);
+    }
+
     public static int toUnsignedQ15(float value) {
         if (Float.isNaN(value))
             return 0;

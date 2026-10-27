@@ -45,6 +45,9 @@ import java.util.Map;
 import java.util.HashMap;
 
 public class ExternalControllerBindingsActivity extends AppCompatActivity {
+    // Assignment requires deliberate travel so resting stick noise cannot win
+    // over the control actually being pressed.
+    private static final float BIND_AXIS_THRESHOLD = 0.5f;
     private TextView emptyTextView;
     private ControlsProfile profile;
     private ExternalController controller;
@@ -254,7 +257,7 @@ public class ExternalControllerBindingsActivity extends AppCompatActivity {
 
         byte sign;
         for (int i = 0; i < axes.length; i++) {
-            if ((sign = Mathf.sign(values[i])) != 0) {
+            if (Math.abs(values[i]) > BIND_AXIS_THRESHOLD && (sign = Mathf.sign(values[i])) != 0) {
                 if (axes[i] == MotionEvent.AXIS_X || axes[i] == MotionEvent.AXIS_Z) {
                     binding = sign > 0 ? Binding.MOUSE_MOVE_RIGHT : Binding.MOUSE_MOVE_LEFT;
                 }
@@ -302,8 +305,12 @@ public class ExternalControllerBindingsActivity extends AppCompatActivity {
     public boolean dispatchGenericMotionEvent(MotionEvent event) {
         if (event.getDeviceId() == controller.getDeviceId() && controller.updateStateFromMotionEvent(event)) {
             GamepadState state = controller.getGamepadState();
-            if (state.isPressed(ExternalController.IDX_BUTTON_L2)) updateControllerBinding(KeyEvent.KEYCODE_BUTTON_L2, Binding.NONE);
-            if (state.isPressed(ExternalController.IDX_BUTTON_R2)) updateControllerBinding(KeyEvent.KEYCODE_BUTTON_R2, Binding.NONE);
+            // Analog-only triggers (AXIS_LTRIGGER/BRAKE, AXIS_RTRIGGER/GAS)
+            // never send L2/R2 key events, so also accept their analog travel.
+            if (state.isPressed(ExternalController.IDX_BUTTON_L2) || state.triggerL > BIND_AXIS_THRESHOLD)
+                updateControllerBinding(KeyEvent.KEYCODE_BUTTON_L2, Binding.NONE);
+            if (state.isPressed(ExternalController.IDX_BUTTON_R2) || state.triggerR > BIND_AXIS_THRESHOLD)
+                updateControllerBinding(KeyEvent.KEYCODE_BUTTON_R2, Binding.NONE);
             processJoystickInput();
             processExtraAxes(event);
             return true;
